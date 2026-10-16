@@ -37,7 +37,9 @@ that listing in a rescan.
 
 ## Refined criteria (from their ratings, 17 Oct 2026)
 These sharpen the criteria in your instructions. For **rescans**, only add homes
-that meet all of them. For **links they paste**, always add the home, but list
+that meet all of them. If you are reading this after a rescan, re-check every
+unit you added this run against them and delete any that miss (they are new,
+unrated and uncommented, so nothing of theirs is lost). For **links they paste**, always add the home, but list
 any of these it misses under `concerns` (short tags such as "Under 1,400 sqft").
 
 1. **Size:** at least about 1,400 sqft, with decent bedroom sizes. Units around
