@@ -1,0 +1,597 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Our Kovan Home</title>
+<meta name="description" content="Adrian & Shernice's home shortlist near Kovan">
+<meta name="theme-color" content="#3F7D4E">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Our Home">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: a warm, photo-less moodboard — stacked cards on a soft paper ground,
+   tabbed like a phone app (Top 5 · Viewings · Homes · Compare), with a floating
+   "+" for research. Pandan green for actions, kaya yellow for highlights,
+   rose for hearts and concerns. */
+:root{
+  --bg:#FBF8F5; --paper:#FFFFFF; --ink:#2A2226; --muted:#776A70; --line:#EDE4DE;
+  --pandan:#3F7D4E; --pandan-soft:#E4F0E6; --kaya:#E9B949; --kaya-soft:#FBF1D6;
+  --rose:#D9546E; --rose-soft:#FBE4E8; --sky:#4F7BB5; --sky-soft:#E3ECF7;
+  --shadow:0 1px 2px rgba(42,34,38,.06),0 6px 18px rgba(42,34,38,.06);
+  --f-display:"Bricolage Grotesque","Avenir Next","Segoe UI",sans-serif;
+  --f-body:"Figtree",-apple-system,"Segoe UI",Roboto,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#17141A; --paper:#221D24; --ink:#F2ECEE; --muted:#B4A7AD; --line:#352D37;
+  --pandan:#7CC492; --pandan-soft:#21352A; --kaya:#F0C766; --kaya-soft:#3A3120;
+  --rose:#F07A92; --rose-soft:#3D2229; --sky:#8FB1E3; --sky-soft:#1F2B3D;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 18px rgba(0,0,0,.25);
+  color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.45;-webkit-text-size-adjust:100%}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--pandan);outline-offset:2px}
+[hidden]{display:none!important}
+a{color:var(--pandan)}
+
+.app{max-width:760px;margin:0 auto;padding:calc(env(safe-area-inset-top,0px) + 14px) max(16px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 96px) max(16px,env(safe-area-inset-left,0px))}
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+.brand h1{font-family:var(--f-display);font-weight:800;font-size:26px;letter-spacing:-.01em;margin:0;line-height:1.1}
+.brand p{margin:2px 0 0;color:var(--muted);font-size:13px}
+.who{display:flex;align-items:center;gap:6px}
+.av{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font:700 13px var(--f-display);color:#fff}
+.av.adrian{background:var(--sky)} .av.shernice{background:var(--rose)}
+.av.me{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--kaya)}
+.ghost{background:none;border:none;color:var(--muted);font-size:12px;text-decoration:underline;padding:4px}
+
+h2.sec{font-family:var(--f-display);font-size:19px;margin:22px 0 10px;display:flex;align-items:baseline;flex-wrap:wrap;column-gap:8px}
+h2.sec small{font:500 13px var(--f-body);color:var(--muted)}
+
+/* Tabs */
+.tabs{position:fixed;left:0;right:0;bottom:0;background:var(--paper);border-top:1px solid var(--line);display:flex;justify-content:center;padding:6px max(8px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 6px) max(8px,env(safe-area-inset-left,0px));z-index:20}
+.tabs .in{display:flex;gap:4px;max-width:760px;width:100%}
+.tab{flex:1;background:none;border:none;border-radius:12px;padding:6px 4px;display:flex;flex-direction:column;align-items:center;gap:2px;color:var(--muted);font-size:11.5px;font-weight:600}
+.tab svg{width:22px;height:22px}
+.tab[aria-current="page"]{color:var(--pandan);background:var(--pandan-soft)}
+.fab{position:fixed;right:max(18px,env(safe-area-inset-right,0px));bottom:calc(env(safe-area-inset-bottom,0px) + 74px);width:56px;height:56px;border-radius:50%;border:none;background:var(--pandan);color:#fff;box-shadow:var(--shadow);font-size:30px;line-height:1;z-index:21}
+
+/* Chips & pills */
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-size:12.5px;font-weight:600;border-radius:999px;padding:4px 10px;background:var(--bg);border:1px solid var(--line);color:var(--ink);white-space:nowrap}
+.chip.f{cursor:pointer}
+.chip.f[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.chip.love{background:var(--pandan-soft);border-color:transparent;color:var(--pandan)}
+.chip.concern{background:var(--rose-soft);border-color:transparent;color:var(--rose)}
+.chip.fact{background:transparent}
+.chip .x{margin-left:4px;opacity:.6;border:none;background:none;padding:0;font-weight:700}
+.pill{font:700 10.5px var(--f-body);text-transform:uppercase;letter-spacing:.06em;border-radius:6px;padding:3px 7px;white-space:nowrap}
+.st-Unviewed{background:var(--bg);color:var(--muted);border:1px solid var(--line)}
+.st-Booked{background:var(--kaya-soft);color:#8A6410}
+.st-Viewed{background:var(--sky-soft);color:var(--sky)}
+.st-Offer{background:var(--pandan-soft);color:var(--pandan)}
+.st-Rejected{background:var(--line);color:var(--muted)}
+@media (prefers-color-scheme:dark){.st-Booked{color:var(--kaya)}}
+.new{background:var(--kaya);color:#3a2a00}
+
+/* Cards */
+.list{display:grid;gap:14px}
+@media (min-width:700px){.list.two{grid-template-columns:1fr 1fr}}
+.card{background:var(--paper);border-radius:18px;box-shadow:var(--shadow);overflow:hidden;display:flex;flex-direction:column;min-width:0}
+.card.rej{opacity:.6}
+.hero{display:flex;gap:12px;padding:14px 14px 0;align-items:flex-start}
+.pic{flex:0 0 58px;height:72px;border-radius:12px;display:grid;place-items:center}
+.pic svg{width:44px;height:58px}
+.pic.gf{background:var(--pandan-soft);color:var(--pandan)}
+.pic.ph{background:var(--kaya-soft);color:#A9781A}
+.pic.high{background:var(--sky-soft);color:var(--sky)}
+.pic.house{background:var(--rose-soft);color:var(--rose)}
+.pic.other{background:var(--bg);color:var(--muted)}
+.ttl{min-width:0;flex:1}
+.ttl h3{font-family:var(--f-display);font-size:19px;margin:0;line-height:1.15;letter-spacing:-.005em}
+.ttl .sub{color:var(--muted);font-size:13px;margin-top:2px}
+.ttl .row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px}
+.dist{font:700 13px var(--f-display);color:var(--pandan)}
+.body{padding:12px 14px 14px;display:flex;flex-direction:column;gap:10px}
+.money{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.money .ask{font:800 22px var(--f-display);font-variant-numeric:tabular-nums}
+.money .ask.over{color:var(--rose)}
+.money .fair{color:var(--muted);font-size:13px}
+.bar{position:relative;height:8px;border-radius:99px;background:var(--line);margin-top:2px}
+.bar .band{position:absolute;top:0;bottom:0;background:var(--pandan-soft);border:1px solid var(--pandan);border-radius:99px}
+.bar .mk{position:absolute;top:-4px;width:4px;height:16px;border-radius:2px;background:var(--ink)}
+.bar .bud{position:absolute;top:-6px;bottom:-6px;width:0;border-left:2px dashed var(--rose)}
+.barlbl{display:flex;justify-content:space-between;font-size:11px;color:var(--muted)}
+.hearts{display:flex;flex-direction:column;gap:4px}
+.hrow{display:flex;align-items:center;gap:8px;font-size:13px}
+.hrow .nm{width:62px;font-weight:600;color:var(--muted)}
+.hbtn{background:none;border:none;padding:2px;font-size:20px;line-height:1;color:var(--line)}
+.hbtn.on{color:var(--rose)}
+.hrow.ro .hbtn{cursor:default}
+.hrow .none{color:var(--muted);font-size:12px}
+.foot{display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-top:1px solid var(--line);padding:10px 14px}
+.btn{border:1px solid var(--line);background:var(--paper);border-radius:10px;padding:7px 12px;font-weight:600;font-size:13px;text-decoration:none;color:var(--ink);display:inline-flex;align-items:center;gap:6px}
+.btn.primary{background:var(--pandan);border-color:var(--pandan);color:#fff}
+.btn.danger{color:var(--rose);border-color:var(--rose)}
+.btn.sm{padding:5px 9px;font-size:12px}
+.grow{flex:1}
+.lastc{font-size:13px;background:var(--bg);border-radius:12px;padding:8px 10px}
+.lastc b{font-weight:700}
+.cmp-on{background:var(--kaya-soft);border-color:var(--kaya)}
+
+/* Podium */
+.podium{display:grid;grid-template-columns:1fr 1.15fr 1fr;gap:10px;align-items:end;margin-bottom:6px}
+.pod{background:var(--paper);border-radius:16px;box-shadow:var(--shadow);padding:12px 10px;text-align:center;cursor:pointer;border:none;display:flex;flex-direction:column;gap:4px;align-items:center;min-width:0}
+.pod .rk{font:800 28px var(--f-display);line-height:1}
+.pod.r1{padding-top:18px;background:linear-gradient(180deg,var(--kaya-soft),var(--paper) 70%)}
+.pod.r1 .rk{color:#B8860B} .pod.r2 .rk{color:var(--muted)} .pod.r3 .rk{color:#B0704A}
+.pod .nm{font-family:var(--f-display);font-weight:700;font-size:14.5px;line-height:1.15;overflow-wrap:anywhere}
+.pod .sc{font-size:12px;color:var(--rose);font-weight:700}
+.pod .pr{font-size:12px;color:var(--muted)}
+.rankrow{display:flex;align-items:center;gap:12px;background:var(--paper);border-radius:14px;box-shadow:var(--shadow);padding:10px 12px;border:none;width:100%;text-align:left}
+.rankrow .rk{font:800 20px var(--f-display);width:26px;color:var(--muted)}
+.rankrow .nm{font-family:var(--f-display);font-weight:700}
+.empty{background:var(--paper);border:1px dashed var(--line);border-radius:16px;padding:22px;text-align:center;color:var(--muted)}
+.disagree{display:grid;gap:8px}
+.dz{display:flex;align-items:center;gap:10px;background:var(--paper);border-radius:14px;padding:10px 12px;box-shadow:var(--shadow);border:none;text-align:left;width:100%}
+.dz .nm{font-weight:700;flex:1;min-width:0}
+.dz .sc{font-size:13px;white-space:nowrap}
+
+/* Viewings timeline */
+.tl{position:relative;display:grid;gap:12px;padding-left:18px}
+.tl:before{content:"";position:absolute;left:6px;top:6px;bottom:6px;width:2px;background:var(--line);border-radius:2px}
+.tli{position:relative;background:var(--paper);border-radius:14px;box-shadow:var(--shadow);padding:12px 14px}
+.tli:before{content:"";position:absolute;left:-17px;top:16px;width:12px;height:12px;border-radius:50%;background:var(--kaya);border:2px solid var(--bg)}
+.tli.past:before{background:var(--sky)}
+.tli .when{font:700 13px var(--f-display);color:var(--pandan)}
+.tli h3{font-family:var(--f-display);font-size:17px;margin:2px 0}
+.checks{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.ck{font-size:12px;border-radius:8px;border:1px solid var(--line);background:var(--bg);padding:4px 8px}
+.ck[aria-pressed="true"]{background:var(--pandan-soft);border-color:var(--pandan);color:var(--pandan)}
+.ck[aria-pressed="true"]:before{content:"✓ "}
+
+/* Compare */
+.cmpwrap{overflow-x:auto;border-radius:16px;box-shadow:var(--shadow);background:var(--paper)}
+table.cmp{border-collapse:collapse;width:100%;min-width:520px;font-size:13px}
+.cmp th,.cmp td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+.cmp th{color:var(--muted);font-weight:600;width:110px;background:var(--bg)}
+.cmp thead td{font-family:var(--f-display);font-weight:700;font-size:15px}
+
+/* Toolbar */
+.tool{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.tool select{border:1px solid var(--line);background:var(--paper);border-radius:10px;padding:6px 8px;font-size:13px}
+.scrollx{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
+.scrollx::-webkit-scrollbar{display:none}
+
+/* Sheet */
+.scrim{position:fixed;inset:0;background:rgba(20,14,18,.45);z-index:40}
+.sheet{position:fixed;left:0;right:0;bottom:0;max-height:92vh;background:var(--bg);border-radius:22px 22px 0 0;z-index:41;display:flex;flex-direction:column;max-width:760px;margin:0 auto}
+.sheet .hd{display:flex;align-items:center;gap:10px;padding:14px 16px 8px}
+.sheet .hd h3{font-family:var(--f-display);font-size:20px;margin:0;flex:1;min-width:0}
+.sheet .close{border:none;background:var(--paper);border-radius:50%;width:34px;height:34px;font-size:18px}
+.sheet .sc{overflow-y:auto;padding:0 16px 16px;-webkit-overflow-scrolling:touch}
+.sheet .composer{display:flex;gap:8px;padding:10px 16px calc(env(safe-area-inset-bottom,0px) + 10px);border-top:1px solid var(--line);background:var(--paper)}
+.composer input{flex:1;min-width:0;border:1px solid var(--line);border-radius:999px;padding:9px 14px;background:var(--bg)}
+.box{background:var(--paper);border-radius:16px;padding:12px 14px;margin-top:12px;box-shadow:var(--shadow)}
+.box h4{margin:0 0 8px;font:700 13px var(--f-body);text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.kv{display:grid;grid-template-columns:110px 1fr;gap:6px 10px;font-size:14px}
+.kv dt{color:var(--muted)} .kv dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.msgs{display:flex;flex-direction:column;gap:8px}
+.msg{max-width:85%;padding:8px 12px;border-radius:16px;font-size:14px}
+.msg .by{font-size:11px;font-weight:700;opacity:.75;margin-bottom:2px}
+.msg.adrian{background:var(--sky-soft);align-self:flex-start;border-bottom-left-radius:4px}
+.msg.shernice{background:var(--rose-soft);align-self:flex-end;border-bottom-right-radius:4px}
+.msg.mine{outline:1px solid var(--line)}
+.addtag{display:flex;gap:6px;margin-top:8px}
+.addtag input{flex:1;min-width:0;border:1px solid var(--line);border-radius:10px;padding:6px 10px;background:var(--bg);font-size:13px}
+.form{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.form label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:600;color:var(--muted)}
+.form .w{grid-column:1/-1}
+.form input,.form select,.form textarea{width:100%;min-width:0;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--bg);font-size:14px;color:var(--ink);font-weight:400}
+.form textarea{min-height:80px;resize:vertical}
+.notes{white-space:pre-wrap;font-size:14px}
+.req{display:flex;gap:8px;align-items:flex-start;font-size:13px;padding:6px 0;border-bottom:1px solid var(--line)}
+.req:last-child{border-bottom:none}
+.toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 140px);transform:translateX(-50%);background:var(--ink);color:var(--paper);padding:9px 16px;border-radius:999px;font-size:13px;z-index:60;max-width:90vw}
+
+/* Sign-in */
+.gate{min-height:80vh;display:grid;place-items:center;text-align:center}
+.gate .card{padding:28px 22px;max-width:380px;gap:12px;align-items:center}
+.gate img{width:84px;height:84px;border-radius:22px}
+.gate h1{font-family:var(--f-display);font-size:28px;margin:4px 0}
+.gate p{color:var(--muted);margin:0}
+.err{color:var(--rose);font-size:13px}
+@media (prefers-reduced-motion:no-preference){.card,.pod{transition:transform .15s} .pod:active,.card:active{transform:scale(.99)}}
+</style>
+</head>
+<body>
+<div class="app" id="app"><div class="gate"><div class="card"><img src="icon-192.png" alt=""><h1>Our Kovan Home</h1><p>Loading…</p></div></div></div>
+<nav class="tabs" id="tabs" hidden><div class="in">
+  <button class="tab" data-tab="top" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-4.5-9.3-9A5.2 5.2 0 0 1 12 6.2 5.2 5.2 0 0 1 21.3 12C19 16.5 12 21 12 21z"/></svg>Top 5</button>
+  <button class="tab" data-tab="view" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Viewings</button>
+  <button class="tab" data-tab="homes" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Homes</button>
+  <button class="tab" data-tab="cmp" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="7" height="16" rx="2"/><rect x="14" y="4" width="7" height="16" rx="2"/></svg>Compare</button>
+</div></nav>
+<button class="fab" id="fab" type="button" aria-label="Add or research listings" hidden>+</button>
+<div id="sheetRoot"></div>
+<div class="toast" id="toast" hidden role="status"></div>
+
+<script src="config.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script>
+(function(){
+"use strict";
+const CFG = window.HOME_SHORTLIST;
+const PEOPLE = CFG.people;
+const KEYS = Object.values(PEOPLE).map(p => p.key);          // ["adrian","shernice"]
+const NAME = Object.fromEntries(Object.values(PEOPLE).map(p => [p.key, p.name]));
+const STATUSES = ["Unviewed","Booked","Viewed","Offer","Rejected"];
+const STATUS_LABEL = {Unviewed:"Not viewed", Booked:"Viewing booked", Viewed:"Viewed", Offer:"Offer made", Rejected:"Rejected"};
+const CHECKS = ["West sun","Noise (road / MRT / pool)","Refuse chute & bin centre","Patio / roof cover approved","Leaks or water stains","Mobile signal","Lift & car park distance","MCST minutes & sinking fund","Bedroom sizes fit our beds"];
+
+firebase.initializeApp(CFG.firebase);
+const auth = firebase.auth();
+const db = firebase.firestore();
+db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
+const FV = firebase.firestore.FieldValue;
+
+let me = null;              // {key,name,email}
+let units = [];
+let reqs = [];
+let meta = null;
+let tab = "top";
+let filter = "active";
+let sort = "dist";
+let compare = [];
+let sheet = null;           // {type:"unit", id} | {type:"add"}
+let unsubComments = null;
+let comments = [];
+let unsubs = [];
+try{ const t = localStorage.getItem("hs-tab"); if(t) tab = t; const c = JSON.parse(localStorage.getItem("hs-cmp")||"[]"); if(Array.isArray(c)) compare = c.slice(0,3); }catch(e){}
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const money = v => { if(typeof v !== "number" || isNaN(v)) return "—"; let s = v.toFixed(3); if(s.endsWith("0")) s = s.slice(0,-1); return "S$" + s + "M"; };
+const fairTxt = r => (typeof r.fairLowM === "number" && typeof r.fairHighM === "number") ? "S$" + r.fairLowM.toFixed(2) + "–" + r.fairHighM.toFixed(2) + "M" : "TBC";
+const leaseYrs = r => { const m = /(\d+(?:\.\d+)?)\s*yrs?/i.exec(r.lease||""); return m ? parseFloat(m[1]) : (/freehold|999/i.test(r.lease||"") ? 999 : null); };
+const ratingOf = (r,k) => (r.ratings && typeof r.ratings[k] === "number") ? r.ratings[k] : 0;
+const score = r => KEYS.reduce((a,k) => a + ratingOf(r,k), 0);
+const ratedBy = r => KEYS.filter(k => ratingOf(r,k) > 0).length;
+const ckey = c => c.toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_|_$/g,"");
+const fmtWhen = s => { if(!s) return ""; const d = new Date(s); return isNaN(d) ? s : d.toLocaleString("en-SG",{weekday:"short",day:"numeric",month:"short",hour:"numeric",minute:"2-digit"}); };
+const ago = s => { const d = new Date(s); if(isNaN(d)) return ""; const m = Math.round((Date.now()-d)/60000); if(m < 1) return "just now"; if(m < 60) return m + "m ago"; const h = Math.round(m/60); if(h < 24) return h + "h ago"; return Math.round(h/24) + "d ago"; };
+function toast(t){ const el = $("toast"); el.textContent = t; el.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(()=>el.hidden = true, 2600); }
+
+function kind(r){
+  const f = (r.format||"") + " " + (r.name||"");
+  if(/townhouse|strata terrace|cluster/i.test(f)) return "house";
+  if(/penthouse|\bPH\b|roof terrace|duplex/i.test(f)) return "ph";
+  if(/ground|\bGF\b|PES|patio|garden/i.test(f)) return "gf";
+  if(/high floor|view/i.test(f)) return "high";
+  return "other";
+}
+function pic(k){
+  // A little building with the floor that matters highlighted.
+  const floors = [0,1,2,3,4].map(i => `<rect x="6" y="${8+i*9}" width="32" height="7" rx="1.5" fill="currentColor" opacity="${(k==="gf"&&i===4)||(k==="ph"&&i===0)||(k==="high"&&i===1)?1:.22}"/>`).join("");
+  if(k === "house") return `<svg viewBox="0 0 44 58" aria-hidden="true"><path d="M4 26 22 10l18 16v26H4z" fill="currentColor" opacity=".9"/><rect x="17" y="38" width="10" height="14" rx="1.5" fill="var(--paper)"/></svg>`;
+  const extra = k==="ph" ? `<path d="M10 6h24" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="34" cy="3" r="2.5" fill="currentColor"/>` : k==="gf" ? `<path d="M2 54h40" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><circle cx="40" cy="48" r="4" fill="currentColor"/>` : k==="high" ? `<circle cx="39" cy="10" r="3.5" fill="none" stroke="currentColor" stroke-width="2"/>` : "";
+  return `<svg viewBox="0 0 44 58" aria-hidden="true">${floors}${extra}</svg>`;
+}
+function autoConcerns(r){
+  const out = [];
+  if(typeof r.askingM === "number" && r.askingM > CFG.budgetM) out.push("Over budget");
+  const ly = leaseYrs(r); if(ly !== null && ly < CFG.minLeaseYears) out.push("Lease " + ly + " yrs");
+  if(typeof r.distKm === "number" && r.distKm > CFG.maxKmFromKovan) out.push("Over 6 km");
+  if(/^fails:/i.test(r.notes||"")) { /* covered by notes */ }
+  return out;
+}
+
+/* ---------- Auth ---------- */
+auth.getRedirectResult().catch(e => showGate(e.message));
+auth.onAuthStateChanged(user => {
+  unsubs.forEach(f => f()); unsubs = [];
+  if(!user){ me = null; showGate(); return; }
+  const p = PEOPLE[(user.email||"").toLowerCase()];
+  if(!p){ me = null; showGate("This app is only for Adrian and Shernice. You're signed in as " + user.email + "."); return; }
+  me = {key:p.key, name:p.name, email:user.email};
+  start();
+});
+function showGate(err){
+  $("tabs").hidden = true; $("fab").hidden = true;
+  $("app").innerHTML = `<div class="gate"><div class="card"><img src="icon-192.png" alt=""><h1>Our Kovan Home</h1>
+    <p>Adrian &amp; Shernice's home shortlist</p>
+    ${auth.currentUser ? `<button class="btn" id="out" type="button">Sign out</button>` : `<button class="btn primary" id="gin" type="button">Sign in with Google</button>`}
+    ${err ? `<p class="err">${esc(err)}</p>` : ""}</div></div>`;
+  const g = $("gin"); if(g) g.onclick = signIn;
+  const o = $("out"); if(o) o.onclick = () => auth.signOut();
+}
+async function signIn(){
+  const p = new firebase.auth.GoogleAuthProvider();
+  p.setCustomParameters({prompt:"select_account"});
+  try { await auth.signInWithPopup(p); }
+  catch(e){
+    if(/popup|operation-not-supported|web-storage/i.test(e.code||"")) { try { await auth.signInWithRedirect(p); } catch(e2){ showGate(e2.message); } }
+    else if(e.code !== "auth/cancelled-popup-request" && e.code !== "auth/popup-closed-by-user") showGate(e.message);
+  }
+}
+
+/* ---------- Data ---------- */
+function start(){
+  $("tabs").hidden = false; $("fab").hidden = false;
+  render();
+  unsubs.push(db.collection("hs_units").onSnapshot(s => {
+    units = s.docs.map(d => Object.assign({id:d.id}, d.data()));
+    render(); renderSheet();
+  }, e => { $("app").innerHTML = `<div class="empty">Couldn't load the shortlist: ${esc(e.message)}</div>`; }));
+  unsubs.push(db.collection("hs_requests").orderBy("createdAt","desc").limit(8).onSnapshot(s => {
+    reqs = s.docs.map(d => Object.assign({id:d.id}, d.data())); if(sheet && sheet.type === "add") renderSheet();
+  }, ()=>{}));
+  unsubs.push(db.doc("hs_meta/worker").onSnapshot(s => { meta = s.exists ? s.data() : null; if(sheet && sheet.type === "add") renderSheet(); }, ()=>{}));
+}
+const unitRef = id => db.collection("hs_units").doc(id);
+async function save(id, data, okMsg){
+  try { await unitRef(id).update(data); if(okMsg) toast(okMsg); }
+  catch(e){ toast("Couldn't save — " + (e.code === "permission-denied" ? "no permission" : "check your connection")); }
+}
+
+/* ---------- Render: shell ---------- */
+function render(){
+  if(!me) return;
+  document.querySelectorAll(".tab").forEach(b => b.setAttribute("aria-current", b.dataset.tab === tab ? "page" : "false"));
+  const head = `<header class="top"><div class="brand"><h1>Our Kovan Home</h1><p>${units.filter(u=>u.status!=="Rejected").length} homes in play · within 6 km of Kovan</p></div>
+    <div class="who">${KEYS.map(k => `<span class="av ${k} ${k===me.key?"me":""}" title="${esc(NAME[k])}">${esc(NAME[k][0])}</span>`).join("")}
+    <button class="ghost" id="signout" type="button">Sign out</button></div></header>`;
+  let body = "";
+  if(tab === "top") body = viewTop();
+  else if(tab === "view") body = viewViewings();
+  else if(tab === "cmp") body = viewCompare();
+  else body = viewHomes();
+  $("app").innerHTML = head + body;
+  $("signout").onclick = () => auth.signOut();
+}
+
+/* ---------- Card ---------- */
+function heartsRow(r, k){
+  const v = ratingOf(r,k); const mine = k === me.key;
+  const btns = [1,2,3,4,5].map(n => `<button class="hbtn ${n<=v?"on":""}" type="button" ${mine?`data-rate="${esc(r.id)}" data-n="${n}"`:"disabled"} aria-label="${mine?"Rate "+n+" of 5":NAME[k]+" rated "+v}">♥</button>`).join("");
+  return `<div class="hrow ${mine?"":"ro"}"><span class="nm">${esc(NAME[k])}</span>${btns}${!mine && !v ? `<span class="none">not rated yet</span>` : ""}</div>`;
+}
+function bar(r){
+  if(typeof r.askingM !== "number") return "";
+  const lo = r.fairLowM, hi = r.fairHighM;
+  const vals = [r.askingM, CFG.budgetM].concat(typeof lo === "number" ? [lo,hi] : []);
+  const min = Math.min(...vals)*0.96, max = Math.max(...vals)*1.03, pct = v => ((v-min)/(max-min)*100).toFixed(1) + "%";
+  return `<div><div class="bar">${typeof lo==="number"?`<span class="band" style="left:${pct(lo)};width:calc(${pct(hi)} - ${pct(lo)})"></span>`:""}<span class="bud" style="left:${pct(CFG.budgetM)}" title="Budget"></span><span class="mk" style="left:calc(${pct(r.askingM)} - 2px)" title="Asking"></span></div>
+    <div class="barlbl"><span>▮ asking${typeof lo==="number"?" · ▭ fair value":""}</span><span style="color:var(--rose)">┆ budget S$${CFG.budgetM}M</span></div></div>`;
+}
+function card(r){
+  const k = kind(r);
+  const st = STATUSES.includes(r.status) ? r.status : "Unviewed";
+  const loves = (r.loves||[]).slice(0,4).map(t => `<span class="chip love">${esc(t)}</span>`).join("");
+  const concerns = autoConcerns(r).concat(r.concerns||[]).slice(0,5).map(t => `<span class="chip concern">${esc(t)}</span>`).join("");
+  const inCmp = compare.includes(r.id);
+  const lc = r.lastComment;
+  return `<article class="card ${st==="Rejected"?"rej":""}">
+    <div class="hero"><div class="pic ${k}">${pic(k)}</div><div class="ttl">
+      <h3>${esc(r.name)}</h3><div class="sub">${esc(r.area||"")}</div>
+      <div class="row"><span class="dist">${typeof r.distKm==="number"?(r.distEst?"≈":"")+r.distKm.toFixed(r.distKm<1?2:1)+" km":"—"} from Kovan</span><span class="pill st-${st}">${esc(STATUS_LABEL[st])}</span>${r.isNew?`<span class="pill new">New</span>`:""}${r.listingState&&r.listingState!=="Live"?`<span class="pill st-Booked">${esc(r.listingState)}</span>`:""}</div>
+    </div></div>
+    <div class="body">
+      <div class="money"><span class="ask ${r.askingM>CFG.budgetM?"over":""}">${esc(money(r.askingM))}</span><span class="fair">fair ${esc(fairTxt(r))}</span></div>
+      ${bar(r)}
+      <div class="chips"><span class="chip fact">${esc(r.beds||"")}</span>${r.sizeSqft?`<span class="chip fact">${Number(r.sizeSqft).toLocaleString("en-SG")} sqft</span>`:""}<span class="chip fact">🚇 ${esc(r.mrt||"—")}${r.mrtDist?" · "+esc(r.mrtDist):""}</span><span class="chip fact">⏳ ${esc(r.lease||"—")}</span><span class="chip fact">${esc(r.format||"")}</span></div>
+      ${loves||concerns ? `<div class="chips">${loves}${concerns}</div>` : ""}
+      <div class="hearts">${KEYS.map(k2 => heartsRow(r,k2)).join("")}</div>
+      ${lc ? `<div class="lastc"><b>${esc(NAME[lc.by]||lc.by)}:</b> ${esc(lc.text)} <span style="color:var(--muted)">· ${esc(ago(lc.at))}</span></div>` : ""}
+    </div>
+    <div class="foot">
+      <button class="btn primary sm" type="button" data-open="${esc(r.id)}">💬 ${r.commentCount?esc(r.commentCount)+" ":""}Details</button>
+      ${r.url?`<a class="btn sm" href="${esc(r.url)}" target="_blank" rel="noopener">Listing ↗</a>`:""}
+      <span class="grow"></span>
+      <button class="btn sm ${inCmp?"cmp-on":""}" type="button" data-cmp="${esc(r.id)}">${inCmp?"✓ Comparing":"Compare"}</button>
+    </div>
+  </article>`;
+}
+
+/* ---------- Views ---------- */
+function viewTop(){
+  const active = units.filter(u => u.status !== "Rejected");
+  const ranked = active.filter(u => score(u) > 0).sort((a,b) => score(b)-score(a) || ratedBy(b)-ratedBy(a) || (a.distKm??99)-(b.distKm??99));
+  const top = ranked.slice(0,5);
+  const unrated = active.filter(u => !ratingOf(u, me.key));
+  let h = `<h2 class="sec">Our Top 5 <small>by combined hearts</small></h2>`;
+  if(!top.length) h += `<div class="empty">No hearts yet. Open <b>Homes</b> and give each place 1–5 ♥ — your Top 5 builds itself.</div>`;
+  else {
+    const p = [top[1], top[0], top[2]];
+    h += `<div class="podium">${p.map((u,i) => u ? `<button class="pod r${[2,1,3][i]}" type="button" data-open="${esc(u.id)}"><span class="rk">${[2,1,3][i]}</span><span class="nm">${esc(u.name)}</span><span class="sc">♥ ${score(u)}/10</span><span class="pr">${esc(money(u.askingM))}</span></button>` : `<span></span>`).join("")}</div>`;
+    h += `<div class="list" style="gap:8px">${top.slice(3).map((u,i) => `<button class="rankrow" type="button" data-open="${esc(u.id)}"><span class="rk">${i+4}</span><span class="grow"><span class="nm">${esc(u.name)}</span><br><span style="color:var(--muted);font-size:13px">${esc(money(u.askingM))} · ${esc(u.format||"")}</span></span><span style="color:var(--rose);font-weight:700">♥ ${score(u)}</span></button>`).join("")}</div>`;
+  }
+  const dis = active.filter(u => KEYS.every(k => ratingOf(u,k) > 0) && Math.abs(ratingOf(u,KEYS[0]) - ratingOf(u,KEYS[1])) >= 2);
+  if(dis.length){
+    h += `<h2 class="sec">Let's talk about these <small>you rated them differently</small></h2><div class="disagree">${dis.map(u => `<button class="dz" type="button" data-open="${esc(u.id)}"><span class="nm">${esc(u.name)}</span><span class="sc">${KEYS.map(k => `${esc(NAME[k])} <span style="color:var(--rose)">${"♥".repeat(ratingOf(u,k))}</span>`).join(" · ")}</span></button>`).join("")}</div>`;
+  }
+  const next = units.filter(u => u.status === "Booked" && u.appt && new Date(u.appt) >= new Date(Date.now()-3*3600e3)).sort((a,b) => new Date(a.appt)-new Date(b.appt)).slice(0,2);
+  if(next.length) h += `<h2 class="sec">Next viewings</h2><div class="tl">${next.map(u => viewItem(u,true)).join("")}</div>`;
+  if(unrated.length) h += `<h2 class="sec">Waiting for your hearts <small>${unrated.length} homes</small></h2><div class="list two">${unrated.sort((a,b)=>(a.distKm??99)-(b.distKm??99)).slice(0,4).map(card).join("")}</div>`;
+  return h;
+}
+function viewItem(u, compact){
+  const past = u.appt && new Date(u.appt) < new Date();
+  const checks = u.checks || {};
+  const map = "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent((u.name||"") + " " + (u.area||"").split("·")[0] + " Singapore");
+  return `<div class="tli ${past?"past":""}"><div class="when">${u.appt?esc(fmtWhen(u.appt)):"Time not set"}</div><h3>${esc(u.name)}</h3>
+    <div style="color:var(--muted);font-size:13px">${esc(u.area||"")} · ${esc(money(u.askingM))}${u.agent?" · Agent "+esc(u.agent):""}</div>
+    ${compact?"":`<div class="checks">${CHECKS.map(c => `<button class="ck" type="button" aria-pressed="${checks[ckey(c)]?"true":"false"}" data-check="${esc(u.id)}" data-c="${esc(c)}">${esc(c)}</button>`).join("")}</div>`}
+    <div class="chips" style="margin-top:10px"><a class="btn sm" href="${map}" target="_blank" rel="noopener">Map ↗</a><button class="btn sm" type="button" data-open="${esc(u.id)}">Details & notes</button></div></div>`;
+}
+function viewViewings(){
+  const booked = units.filter(u => (u.status === "Booked" || u.status === "Viewed" || u.status === "Offer") || u.appt);
+  const now = Date.now();
+  const up = booked.filter(u => u.status === "Booked" && (!u.appt || new Date(u.appt) >= now - 3*3600e3)).sort((a,b) => new Date(a.appt||8.64e15) - new Date(b.appt||8.64e15));
+  const past = booked.filter(u => !up.includes(u)).sort((a,b) => new Date(b.appt||0) - new Date(a.appt||0));
+  let h = `<h2 class="sec">Coming up <small>${up.length}</small></h2>`;
+  h += up.length ? `<div class="tl">${up.map(viewItem).join("")}</div>` : `<div class="empty">No viewings booked. Open a home and tap <b>Book viewing</b>.</div>`;
+  if(past.length) h += `<h2 class="sec">Seen <small>${past.length}</small></h2><div class="tl">${past.map(viewItem).join("")}</div>`;
+  return h;
+}
+const FILTERS = [
+  ["active","In play", u => u.status !== "Rejected"],
+  ["budget","Within budget", u => u.status !== "Rejected" && typeof u.askingM === "number" && u.askingM <= CFG.budgetM],
+  ["new","New", u => u.isNew && u.status !== "Rejected"],
+  ["mine","Not rated by me", u => u.status !== "Rejected" && !ratingOf(u, me.key)],
+  ["booked","Booked", u => u.status === "Booked"],
+  ["viewed","Viewed", u => u.status === "Viewed" || u.status === "Offer"],
+  ["rejected","Rejected", u => u.status === "Rejected"],
+  ["all","All", () => true]
+];
+function viewHomes(){
+  const fn = (FILTERS.find(f => f[0] === filter) || FILTERS[0])[2];
+  const sorters = {dist:(a,b)=>(a.distKm??99)-(b.distKm??99), hearts:(a,b)=>score(b)-score(a)||(a.distKm??99)-(b.distKm??99), price:(a,b)=>(a.askingM??99)-(b.askingM??99), value:(a,b)=>((a.askingM??99)-(a.fairHighM??a.askingM??99))-((b.askingM??99)-(b.fairHighM??b.askingM??99))};
+  const list = units.filter(fn).sort(sorters[sort] || sorters.dist);
+  return `<div class="tool"><div class="scrollx">${FILTERS.map(([k,l,f]) => `<button class="chip f" type="button" data-filter="${k}" aria-pressed="${filter===k}">${esc(l)} ${units.filter(f).length}</button>`).join("")}</div>
+    <label style="font-size:13px;color:var(--muted)">Sort <select id="sort"><option value="dist" ${sort==="dist"?"selected":""}>Closest to Kovan</option><option value="hearts" ${sort==="hearts"?"selected":""}>Most hearts</option><option value="price" ${sort==="price"?"selected":""}>Lowest price</option><option value="value" ${sort==="value"?"selected":""}>Best vs fair value</option></select></label></div>
+    ${list.length ? `<div class="list two">${list.map(card).join("")}</div>` : `<div class="empty">Nothing here yet.</div>`}`;
+}
+function viewCompare(){
+  const sel = compare.map(id => units.find(u => u.id === id)).filter(Boolean);
+  if(sel.length < 2) return `<h2 class="sec">Compare</h2><div class="empty">Tap <b>Compare</b> on 2 or 3 homes in the Homes tab, then come back here.${sel.length?`<br><br>Picked so far: <b>${esc(sel[0].name)}</b>`:""}</div>`;
+  const rows = [
+    ["Asking", u => money(u.askingM)], ["Fair value", u => fairTxt(u)], ["Format", u => u.format], ["Beds", u => u.beds], ["Size", u => u.sizeSqft ? Number(u.sizeSqft).toLocaleString("en-SG")+" sqft" : "—"],
+    ["From Kovan", u => typeof u.distKm==="number" ? u.distKm.toFixed(1)+" km" : "—"], ["MRT", u => (u.mrt||"—") + (u.mrtDist?" · "+u.mrtDist:"")], ["Lease", u => u.lease],
+    ...KEYS.map(k => [NAME[k] + " ♥", u => "♥".repeat(ratingOf(u,k)) || "—"]), ["Status", u => STATUS_LABEL[u.status] || u.status],
+    ["Loves", u => (u.loves||[]).join(", ") || "—"], ["Concerns", u => autoConcerns(u).concat(u.concerns||[]).join(", ") || "—"]
+  ];
+  return `<h2 class="sec">Compare <small><button class="ghost" id="clearcmp" type="button">clear</button></small></h2>
+    <div class="cmpwrap"><table class="cmp"><thead><tr><th></th>${sel.map(u => `<td>${esc(u.name)}</td>`).join("")}</tr></thead><tbody>
+    ${rows.map(([l,f]) => `<tr><th>${esc(l)}</th>${sel.map(u => `<td>${esc(f(u))}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+}
+
+/* ---------- Sheet: unit detail ---------- */
+function openUnit(id){
+  sheet = {type:"unit", id}; comments = [];
+  if(unsubComments) unsubComments();
+  unsubComments = unitRef(id).collection("comments").orderBy("at").onSnapshot(s => { comments = s.docs.map(d => Object.assign({id:d.id}, d.data())); renderMsgs(); }, ()=>{});
+  renderSheet(true);
+}
+function closeSheet(){ sheet = null; if(unsubComments){ unsubComments(); unsubComments = null; } $("sheetRoot").innerHTML = ""; }
+function renderMsgs(){
+  const el = $("msgs"); if(!el) return;
+  el.innerHTML = comments.length ? comments.map(c => `<div class="msg ${esc(c.by)} ${c.by===me.key?"mine":""}"><div class="by">${esc(NAME[c.by]||c.by)} · ${esc(ago(c.at))}</div>${esc(c.text)}</div>`).join("") : `<div style="color:var(--muted);font-size:13px">No comments yet. Say what you liked or what worries you.</div>`;
+  const sc = $("sheetScroll"); if(sc && renderMsgs._stick) sc.scrollTop = sc.scrollHeight;
+}
+function renderSheet(fresh){
+  const root = $("sheetRoot");
+  if(!sheet){ root.innerHTML = ""; return; }
+  if(sheet.type === "add") return renderAddSheet(fresh);
+  const r = units.find(u => u.id === sheet.id);
+  if(!r){ closeSheet(); return; }
+  const st = STATUSES.includes(r.status) ? r.status : "Unviewed";
+  const editing = sheet.edit;
+  const inner = `
+    <div class="box"><div class="money"><span class="ask ${r.askingM>CFG.budgetM?"over":""}">${esc(money(r.askingM))}</span><span class="fair">fair ${esc(fairTxt(r))}</span></div>
+      ${r.askingNote?`<div style="font-size:12.5px;color:var(--muted);margin-top:4px">${esc(r.askingNote)}</div>`:""}
+      ${r.fairBasis?`<div style="font-size:12.5px;color:var(--muted);margin-top:4px">Fair value basis: ${esc(r.fairBasis)}</div>`:""}
+      <div style="margin-top:10px">${bar(r)}</div>
+      <div class="hearts" style="margin-top:12px">${KEYS.map(k => heartsRow(r,k)).join("")}</div></div>
+    <div class="box"><h4>Viewing</h4>
+      <div class="form"><label>Status<select id="stSel">${STATUSES.map(s => `<option value="${s}" ${s===st?"selected":""}>${esc(STATUS_LABEL[s])}</option>`).join("")}</select></label>
+      <label>Date & time<input id="apptIn" type="datetime-local" value="${esc(r.appt||"")}"></label>
+      <label class="w">Agent (name & phone)<input id="agentIn" value="${esc(r.agent||"")}" placeholder="e.g. Matthew Tan 8132 8152"></label></div></div>
+    <div class="box"><h4>Loves & concerns</h4>
+      <div class="chips">${(r.loves||[]).map((t,i) => `<span class="chip love">${esc(t)}<button class="x" type="button" data-untag="loves" data-i="${i}" aria-label="Remove">×</button></span>`).join("")}
+      ${autoConcerns(r).map(t => `<span class="chip concern">${esc(t)}</span>`).join("")}
+      ${(r.concerns||[]).map((t,i) => `<span class="chip concern">${esc(t)}<button class="x" type="button" data-untag="concerns" data-i="${i}" aria-label="Remove">×</button></span>`).join("")}</div>
+      <form class="addtag" id="tagForm"><input id="tagIn" placeholder="Add a love or concern" maxlength="40" autocomplete="off"><button class="btn sm" type="submit" data-kind="loves">💚 Love</button><button class="btn sm" type="button" id="addConcern">🚩 Concern</button></form></div>
+    <div class="box"><h4>Facts</h4><dl class="kv">
+      <dt>Format</dt><dd>${esc(r.format||"—")}</dd><dt>Beds</dt><dd>${esc(r.beds||"—")}</dd><dt>Size</dt><dd>${r.sizeSqft?Number(r.sizeSqft).toLocaleString("en-SG")+" sqft":"—"}</dd>
+      <dt>From Kovan</dt><dd>${typeof r.distKm==="number"?(r.distEst?"≈":"")+r.distKm+" km":"—"}</dd><dt>MRT</dt><dd>${esc(r.mrt||"—")}${r.mrtDist?" · "+esc(r.mrtDist):""}</dd>
+      <dt>Lease</dt><dd>${esc(r.lease||"—")}</dd><dt>Area</dt><dd>${esc(r.area||"—")}</dd>${r.checkedAt?`<dt>Checked</dt><dd>${esc(r.checkedAt)}</dd>`:""}</dl>
+      <div class="chips" style="margin-top:10px">${r.url?`<a class="btn sm" href="${esc(r.url)}" target="_blank" rel="noopener">Open listing ↗</a>`:""}<a class="btn sm" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((r.name||"")+" Singapore")}" target="_blank" rel="noopener">Map ↗</a>${r.isNew?`<button class="btn sm" type="button" id="seenBtn">Mark as seen</button>`:""}</div></div>
+    <div class="box"><h4>Claude's notes</h4>${editing ? `<form class="form" id="editForm">
+        <label>Asking (S$M)<input id="e-ask" type="number" step="0.001" value="${r.askingM??""}"></label><label>Size (sqft)<input id="e-size" type="number" value="${r.sizeSqft??""}"></label>
+        <label>Fair low (S$M)<input id="e-flo" type="number" step="0.01" value="${r.fairLowM??""}"></label><label>Fair high (S$M)<input id="e-fhi" type="number" step="0.01" value="${r.fairHighM??""}"></label>
+        <label class="w">Notes<textarea id="e-notes">${esc(r.notes||"")}</textarea></label>
+        <div class="w chips"><button class="btn primary sm" type="submit">Save</button><button class="btn sm" type="button" id="cancelEdit">Cancel</button><span class="grow"></span><button class="btn danger sm" type="button" id="delBtn">${sheet.confirmDel?"Tap again to delete":"Delete home"}</button></div></form>`
+      : `<div class="notes">${esc(r.notes||"—")}</div><div style="margin-top:8px"><button class="btn sm" type="button" id="editBtn">Edit details</button></div>`}</div>
+    <div class="box"><h4>Our chat</h4><div class="msgs" id="msgs"></div></div>`;
+  if(fresh || !$("sheetScroll")){
+    root.innerHTML = `<div class="scrim" id="scrim"></div><div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(r.name)}">
+      <div class="hd"><div class="pic ${kind(r)}" style="flex:0 0 40px;height:48px"><span style="transform:scale(.7)">${pic(kind(r))}</span></div><h3 id="sheetTitle">${esc(r.name)}</h3><button class="close" id="closeSheet" type="button" aria-label="Close">×</button></div>
+      <div class="sc" id="sheetScroll"><div id="sheetBody"></div></div>
+      <form class="composer" id="composer"><input id="cIn" placeholder="Comment as ${esc(me.name)}…" maxlength="500" autocomplete="off"><button class="btn primary" type="submit">Send</button></form></div>`;
+    $("scrim").onclick = closeSheet; $("closeSheet").onclick = closeSheet;
+    $("composer").onsubmit = async ev => { ev.preventDefault(); const t = $("cIn").value.trim(); if(!t) return; $("cIn").value = ""; renderMsgs._stick = true;
+      const at = new Date().toISOString();
+      try { await unitRef(r.id).collection("comments").add({by:me.key, text:t, at}); await unitRef(r.id).update({commentCount: FV.increment(1), lastComment:{by:me.key, text:t.slice(0,140), at}}); }
+      catch(e){ toast("Couldn't send — check your connection"); } };
+  }
+  $("sheetTitle").textContent = r.name;
+  const sc = $("sheetScroll"); const keep = sc.scrollTop;
+  $("sheetBody").innerHTML = inner;
+  sc.scrollTop = keep;
+  renderMsgs();
+  // wire
+  $("stSel").onchange = e => save(r.id, {status:e.target.value}, "Status updated");
+  $("apptIn").onchange = e => save(r.id, {appt:e.target.value, ...(e.target.value && r.status==="Unviewed" ? {status:"Booked"} : {})}, "Viewing saved");
+  $("agentIn").onchange = e => save(r.id, {agent:e.target.value.trim()}, "Saved");
+  const addTag = kindKey => { const v = $("tagIn").value.trim(); if(!v) return; $("tagIn").value = ""; save(r.id, {[kindKey]: FV.arrayUnion(v)}); };
+  $("tagForm").onsubmit = ev => { ev.preventDefault(); addTag("loves"); };
+  $("addConcern").onclick = () => addTag("concerns");
+  const seen = $("seenBtn"); if(seen) seen.onclick = () => save(r.id, {isNew:false});
+  const eb = $("editBtn"); if(eb) eb.onclick = () => { sheet.edit = true; sheet.confirmDel = false; renderSheet(); };
+  const ce = $("cancelEdit"); if(ce) ce.onclick = () => { sheet.edit = false; renderSheet(); };
+  const del = $("delBtn"); if(del) del.onclick = async () => { if(!sheet.confirmDel){ sheet.confirmDel = true; renderSheet(); return; } try{ await unitRef(r.id).delete(); toast("Deleted"); closeSheet(); }catch(e){ toast("Couldn't delete"); } };
+  const ef = $("editForm"); if(ef) ef.onsubmit = ev => { ev.preventDefault(); const n = v => v === "" ? null : Number(v);
+    save(r.id, {askingM:n($("e-ask").value), sizeSqft:n($("e-size").value), fairLowM:n($("e-flo").value), fairHighM:n($("e-fhi").value), notes:$("e-notes").value.trim()}, "Saved"); sheet.edit = false; renderSheet(); };
+}
+
+/* ---------- Sheet: add / research ---------- */
+function renderAddSheet(){
+  const last = meta && meta.lastRunAt ? `Claude last checked ${esc(ago(meta.lastRunAt))}${meta.summary?": "+esc(meta.summary):""}` : "";
+  const list = reqs.map(q => `<div class="req"><span class="pill ${q.status==="done"?"st-Offer":q.status==="failed"?"st-Rejected":"st-Booked"}">${esc(q.status||"queued")}</span><span class="grow" style="min-width:0;overflow-wrap:anywhere"><b>${q.type==="add"?"Add":q.type==="rescan"?"Rescan":"Refresh"}</b> ${q.type==="add"?esc((q.url||"").replace(/^https?:\/\/(www\.)?/,"").slice(0,60)):""} <span style="color:var(--muted)">· ${esc(NAME[q.by]||"")} ${esc(ago(q.createdAt))}</span>${q.result?`<br><span style="color:var(--muted)">${esc(q.result)}</span>`:""}</span></div>`).join("");
+  $("sheetRoot").innerHTML = `<div class="scrim" id="scrim"></div><div class="sheet" role="dialog" aria-modal="true" aria-label="Find homes">
+    <div class="hd"><h3>Find more homes</h3><button class="close" id="closeSheet" type="button" aria-label="Close">×</button></div>
+    <div class="sc"><div class="box"><h4>Add from a listing link</h4>
+      <form class="addtag" id="addForm"><input id="addUrl" type="url" inputmode="url" placeholder="Paste a PropertyGuru link" autocomplete="off"><button class="btn primary sm" type="submit">Add</button></form>
+      <p style="font-size:12.5px;color:var(--muted);margin:8px 0 0">Claude researches it (lease, fair value, MRT, distance from Kovan) and adds it to Homes. It runs at Claude's next check — or ask Adrian to nudge Claude in chat for a faster turnaround.</p></div>
+    <div class="box"><h4>Ask Claude to…</h4><div class="chips"><button class="btn sm" type="button" id="refreshBtn">↻ Re-check all listings</button><button class="btn sm" type="button" id="rescanBtn">🔍 Scan for new homes</button></div></div>
+    <div class="box"><h4>Recent requests</h4>${list || `<div style="color:var(--muted);font-size:13px">Nothing yet.</div>`}${last?`<p style="font-size:12.5px;color:var(--muted);margin:8px 0 0">${last}</p>`:""}</div></div></div>`;
+  $("scrim").onclick = closeSheet; $("closeSheet").onclick = closeSheet;
+  const q = async (data, msg) => { try { await db.collection("hs_requests").add(Object.assign({status:"queued", createdAt:new Date().toISOString(), by:me.key}, data)); toast(msg); } catch(e){ toast("Couldn't send the request"); } };
+  $("addForm").onsubmit = ev => { ev.preventDefault(); const u = $("addUrl").value.trim(); if(!/^https?:\/\/\S+\.\S+/.test(u)) { toast("Paste the full link, starting with https://"); return; }
+    if(units.some(x => x.url && x.url.split("#")[0] === u.split("#")[0])) { toast("That listing is already in the list"); return; } q({type:"add", url:u}, "Sent to Claude"); };
+  $("refreshBtn").onclick = () => q({type:"refresh"}, "Claude will re-check every listing");
+  $("rescanBtn").onclick = () => q({type:"rescan"}, "Claude will scan for new homes");
+}
+
+/* ---------- Events ---------- */
+document.addEventListener("click", ev => {
+  const t = ev.target.closest("button,[data-open]"); if(!t || !me) return;
+  if(t.classList.contains("tab")){ tab = t.dataset.tab; try{localStorage.setItem("hs-tab",tab);}catch(e){} render(); window.scrollTo(0,0); return; }
+  if(t.id === "fab"){ sheet = {type:"add"}; renderSheet(true); return; }
+  if(t.dataset.open){ openUnit(t.dataset.open); return; }
+  if(t.dataset.rate){ const id = t.dataset.rate, n = +t.dataset.n; const r = units.find(u => u.id === id); const cur = r ? ratingOf(r, me.key) : 0; save(id, {["ratings."+me.key]: cur === n ? 0 : n}); return; }
+  if(t.dataset.filter){ filter = t.dataset.filter; render(); return; }
+  if(t.dataset.cmp){ const id = t.dataset.cmp; compare = compare.includes(id) ? compare.filter(x => x !== id) : compare.concat(id).slice(-3); try{localStorage.setItem("hs-cmp",JSON.stringify(compare));}catch(e){} render(); toast(compare.includes(id) ? "Added to Compare (" + compare.length + "/3)" : "Removed from Compare"); return; }
+  if(t.id === "clearcmp"){ compare = []; try{localStorage.setItem("hs-cmp","[]");}catch(e){} render(); return; }
+  if(t.dataset.check){ const r = units.find(u => u.id === t.dataset.check); if(!r) return; const c = t.dataset.c; save(r.id, {["checks."+ckey(c)]: !(r.checks||{})[ckey(c)]}); return; }
+  if(t.dataset.untag){ const r = units.find(u => u.id === sheet.id); if(!r) return; const arr = (r[t.dataset.untag]||[]); save(r.id, {[t.dataset.untag]: FV.arrayRemove(arr[+t.dataset.i])}); return; }
+});
+document.addEventListener("change", ev => { if(ev.target.id === "sort"){ sort = ev.target.value; render(); } });
+document.addEventListener("keydown", ev => { if(ev.key === "Escape" && sheet) closeSheet(); });
+
+if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
+})();
+</script>
+</body>
+</html>
