@@ -365,7 +365,7 @@ function start(){
   $("tabs").hidden = false; $("fab").hidden = false;
   render();
   unsubs.push(db.collection("hs_units").onSnapshot(s => {
-    units = s.docs.map(d => Object.assign({id:d.id}, d.data()));
+    units = s.docs.map(d => Object.assign({id:d.id}, d.data())); if(!s.metadata.fromCache){ unitsLoaded = true; applyAll(); }
     render(); renderSheet();
   }, e => { $("app").innerHTML = `<div class="empty">Couldn't load the shortlist: ${esc(e.message)}</div>`; }));
   unsubs.push(db.collection("hs_requests").orderBy("createdAt","desc").limit(8).onSnapshot(s => {
@@ -373,7 +373,7 @@ function start(){
   }, ()=>{}));
   unsubs.push(db.doc("hs_meta/agent").onSnapshot(s => { agent = s.exists ? s.data() : null; NAME.agent = AGENT(); render(); }, ()=>{}));
   unsubs.push(db.collection("hs_agent").orderBy("createdAt","desc").limit(10).onSnapshot(s => {
-    asks = s.docs.map(d => Object.assign({id:d.id}, d.data())); asks.forEach(applyReply); render(); if(sheet && (sheet.type === "ask" || sheet.type === "reply")) renderSheet();
+    asks = s.docs.map(d => Object.assign({id:d.id}, d.data())); applyAll(); render(); if(sheet && (sheet.type === "ask" || sheet.type === "reply")) renderSheet();
   }, ()=>{}));
   unsubs.push(db.doc("hs_meta/places").onSnapshot(s => { places = (s.exists && s.data().items) || []; render(); if(sheet && sheet.type === "unit") renderSheet(); }, ()=>{}));
   unsubs.push(db.doc("hs_meta/worker").onSnapshot(s => { meta = s.exists ? s.data() : null; if(sheet && sheet.type === "add") renderSheet(); }, ()=>{}));
@@ -647,7 +647,7 @@ function renderAddSheet(){
 }
 
 /* ---------- Agent (WhatsApp) ---------- */
-let agent = null, asks = [];
+let agent = null, asks = [], unitsLoaded = false;
 const AGENT = () => (agent && agent.name) || "Agent";
 const millis = t => !t ? 0 : typeof t.toMillis === "function" ? t.toMillis() : typeof t === "number" ? t : (Date.parse(t) || 0);
 const ymd = d => d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
@@ -731,34 +731,46 @@ async function addComment(id, by, text){
   await unitRef(id).update({commentCount:FV.increment(1), lastComment:{by, text:text.slice(0,140), at}});
 }
 const applying = new Set();
+// Apply an agent reply: everything (bookings, comments, "applied" marker) is written
+// in ONE transaction, so it either all lands or none of it does and it retries later.
 async function applyReply(a){
   const rAt = millis(a.replyAt);
-  if(!rAt || (a.appliedAt||0) >= rAt || applying.has(a.id)) return;
+  if(!unitsLoaded || !rAt || (a.appliedAt||0) >= rAt || applying.has(a.id)) return;
   applying.add(a.id);
   const ref = db.collection("hs_agent").doc(a.id);
-  let claim = null;
   try {
     await db.runTransaction(async tx => {
       const s = await tx.get(ref); const d = s.data() || {}; const r = millis(d.replyAt);
       if(!r || (d.appliedAt||0) >= r) return;
+      const homes = (d.reply||{}).homes || {}, prevH = (d.appliedReply||{}).homes || {};
+      const ids = Object.keys(homes).filter(id => units.some(z => z.id === id));
+      const snaps = await Promise.all(ids.map(id => tx.get(unitRef(id))));
+      const now = new Date().toISOString();
+      snaps.forEach((us, i) => {
+        if(!us.exists) return;
+        const id = ids[i], u = us.data(), x = homes[id], p = prevH[id] || {}, upd = {}, lines = [];
+        if(x.state === "confirmed" && x.appt && (x.appt !== p.appt || p.state !== "confirmed")){
+          upd.status = (u.status === "Viewed" || u.status === "Offer") ? u.status : "Booked"; upd.appt = x.appt;
+          upd.agent = AGENT() + (agent && agent.phone ? " " + String(agent.phone).replace(/^65/, "") : "");
+          lines.push("Viewing confirmed for " + fmtWhen(x.appt) + ".");
+        }
+        if(x.state === "unavailable" && p.state !== "unavailable") lines.push("Can't arrange a viewing for now.");
+        if(x.state === "sold" && p.state !== "sold"){ upd.listingState = "Sold (per agent)"; upd.updatedAt = now; upd.updateNote = AGENT() + " says this unit is sold or withdrawn"; lines.push("This unit is sold or withdrawn."); }
+        if((x.view||"").trim() && x.view !== p.view) lines.push(x.view.trim());
+        if(lines.length){
+          const text = lines.join(" ");
+          tx.set(unitRef(id).collection("comments").doc(), {by:"agent", text, at:now});
+          upd.commentCount = FV.increment(1); upd.lastComment = {by:"agent", text:text.slice(0,140), at:now};
+        }
+        if(Object.keys(upd).length) tx.update(unitRef(id), upd);
+      });
       tx.update(ref, {appliedAt:r, appliedReply:d.reply||{}});
-      claim = {reply:d.reply||{}, prev:d.appliedReply||{}};
     });
-  } catch(e){ applying.delete(a.id); return; }
+  } catch(e){ console.warn("Agent reply not applied yet:", e && e.message); }
   applying.delete(a.id);
-  if(!claim) return;
-  const homes = claim.reply.homes || {}, prevH = claim.prev.homes || {};
-  for(const [id, x] of Object.entries(homes)){
-    const u = units.find(z => z.id === id); if(!u) continue;
-    const p = prevH[id] || {}, upd = {}, lines = [];
-    const confirmedNow = x.state === "confirmed" && x.appt && (x.appt !== p.appt || p.state !== "confirmed");
-    if(confirmedNow){ upd.status = (u.status === "Viewed" || u.status === "Offer") ? u.status : "Booked"; upd.appt = x.appt; upd.agent = AGENT() + (agent && agent.phone ? " " + String(agent.phone).replace(/^65/, "") : ""); lines.push("Viewing confirmed for " + fmtWhen(x.appt) + "."); }
-    if(x.state === "unavailable" && p.state !== "unavailable") lines.push("Can't arrange a viewing for now.");
-    if(x.state === "sold" && p.state !== "sold"){ upd.listingState = "Sold (per agent)"; upd.updatedAt = new Date().toISOString(); upd.updateNote = AGENT() + " says this unit is sold or withdrawn"; lines.push("This unit is sold or withdrawn."); }
-    if((x.view||"").trim() && x.view !== p.view) lines.push(x.view.trim());
-    try { if(Object.keys(upd).length) await unitRef(id).update(upd); if(lines.length) await addComment(id, "agent", lines.join(" ")); } catch(e){}
-  }
 }
+const applyAll = () => asks.forEach(applyReply);
+document.addEventListener("visibilitychange", () => { if(document.visibilityState === "visible") applyAll(); });
 function openReply(id){
   const a = asks.find(x => x.id === id); if(!a) return;
   sheet = {type:"reply", id};
