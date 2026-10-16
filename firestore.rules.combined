@@ -224,6 +224,21 @@ service cloud.firestore {
     match /hs_requests/{id} { allow read, write: if hsUser(); }
     match /hs_meta/{id} { allow read, write: if hsUser(); }
 
+    // Viewing requests sent to the agent over WhatsApp. The document id is a
+    // long random code that only appears in the link he is sent. Without
+    // signing in he can open that one document (not list others) and add his
+    // reply until it expires; he cannot change anything else.
+    match /hs_agent/{token} {
+      allow read, write: if hsUser();
+      allow get: if token.size() >= 24 && resource.data.expiresAt > request.time;
+      allow update: if token.size() >= 24
+        && resource.data.expiresAt > request.time
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reply', 'replyAt'])
+        && request.resource.data.reply is map
+        && request.resource.data.reply.keys().hasOnly(['homes', 'note'])
+        && request.resource.data.replyAt == request.time;
+    }
+
     // Nothing else in this database is reachable.
     match /{document=**} {
       allow read, write: if false;

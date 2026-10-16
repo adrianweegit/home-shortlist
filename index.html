@@ -204,6 +204,14 @@ table.cmp{border-collapse:collapse;width:100%;min-width:520px;font-size:13px}
 .msg{max-width:85%;padding:8px 12px;border-radius:16px;font-size:14px}
 .msg .by{font-size:11px;font-weight:700;opacity:.75;margin-bottom:2px}
 .msg.adrian{background:var(--sky-soft);align-self:flex-start;border-bottom-left-radius:4px}
+.msg.agent{background:var(--kaya-soft);align-self:flex-start;border-bottom-left-radius:4px}
+.banner{display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:none;border-radius:14px;padding:12px 14px;background:var(--kaya-soft);color:var(--ink);box-shadow:var(--shadow);margin-top:12px;font-size:14px}
+.pick{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:14px}
+.pick:last-child{border-bottom:none}
+.pick input{width:20px;height:20px;accent-color:var(--pandan);flex:0 0 20px}
+.slot{font-size:12.5px;border-radius:10px;border:1px solid var(--line);background:var(--bg);padding:6px 9px}
+.slot[aria-pressed="true"]{background:var(--pandan-soft);border-color:var(--pandan);color:var(--pandan);font-weight:600}
+.reply{padding:10px 0;border-bottom:1px solid var(--line);font-size:14px}.reply:last-child{border-bottom:none}
 .msg.shernice{background:var(--rose-soft);align-self:flex-end;border-bottom-right-radius:4px}
 .msg.mine{outline:1px solid var(--line)}
 .addtag{display:flex;gap:6px;margin-top:8px}
@@ -363,6 +371,10 @@ function start(){
   unsubs.push(db.collection("hs_requests").orderBy("createdAt","desc").limit(8).onSnapshot(s => {
     reqs = s.docs.map(d => Object.assign({id:d.id}, d.data())); if(sheet && sheet.type === "add") renderSheet();
   }, ()=>{}));
+  unsubs.push(db.doc("hs_meta/agent").onSnapshot(s => { agent = s.exists ? s.data() : null; NAME.agent = AGENT(); render(); }, ()=>{}));
+  unsubs.push(db.collection("hs_agent").orderBy("createdAt","desc").limit(10).onSnapshot(s => {
+    asks = s.docs.map(d => Object.assign({id:d.id}, d.data())); asks.forEach(applyReply); render(); if(sheet && (sheet.type === "ask" || sheet.type === "reply")) renderSheet();
+  }, ()=>{}));
   unsubs.push(db.doc("hs_meta/places").onSnapshot(s => { places = (s.exists && s.data().items) || []; render(); if(sheet && sheet.type === "unit") renderSheet(); }, ()=>{}));
   unsubs.push(db.doc("hs_meta/worker").onSnapshot(s => { meta = s.exists ? s.data() : null; if(sheet && sheet.type === "add") renderSheet(); }, ()=>{}));
 }
@@ -448,12 +460,15 @@ function viewTop(){
   const top = ranked.slice(0,5);
   const unrated = active.filter(u => !ratingOf(u, me.key) && !noped(u, me.key));
   let h = `<h2 class="sec">Our Top 5 <small>by combined hearts</small></h2>`;
+  const fresh = asks.find(a => a.replyAt && millis(a.replyAt) > ((a.seenReplyBy||{})[me.key]||0));
+  if(fresh) h += `<button class="banner" type="button" data-reply="${esc(fresh.id)}">💬 <span class="grow"><b>${esc(AGENT())} replied</b> ${esc(ago(new Date(millis(fresh.replyAt)).toISOString()))} — ${esc(replySummary(fresh))}</span>›</button>`;
   if(!top.length) h += `<div class="empty">No hearts yet. Open <b>Homes</b> and give each place 1–5 ♥ — your Top 5 builds itself.</div>`;
   else {
     const p = [top[1], top[0], top[2]];
     h += `<div class="podium">${p.map((u,i) => u ? `<button class="pod r${[2,1,3][i]}" type="button" data-open="${esc(u.id)}"><span class="rk">${[2,1,3][i]}</span><span class="nm">${esc(u.name)}</span><span class="sc">♥ ${score(u)}/10</span><span class="pr">${esc(money(u.askingM))}</span></button>` : `<span></span>`).join("")}</div>`;
     h += `<div class="list" style="gap:8px">${top.slice(3).map((u,i) => `<button class="rankrow" type="button" data-open="${esc(u.id)}"><span class="rk">${i+4}</span><span class="grow"><span class="nm">${esc(u.name)}</span><br><span style="color:var(--muted);font-size:13px">${esc(money(u.askingM))} · ${esc(u.format||"")}</span></span><span style="color:var(--rose);font-weight:700">♥ ${score(u)}</span></button>`).join("")}</div>`;
   }
+  if(top.length && agent && agent.phone) h += `<div style="margin-top:12px"><button class="btn primary" type="button" id="askBtn" style="width:100%;justify-content:center;padding:11px">💬 Ask ${esc(AGENT())} about these homes</button></div>`;
   const dis = active.filter(u => KEYS.every(k => ratingOf(u,k) > 0) && Math.abs(ratingOf(u,KEYS[0]) - ratingOf(u,KEYS[1])) >= 2);
   if(dis.length){
     h += `<h2 class="sec">Let's talk about these <small>you rated them differently</small></h2><div class="disagree">${dis.map(u => `<button class="dz" type="button" data-open="${esc(u.id)}"><span class="nm">${esc(u.name)}</span><span class="sc">${KEYS.map(k => `${esc(NAME[k])} <span style="color:var(--rose)">${"♥".repeat(ratingOf(u,k))}</span>`).join(" · ")}</span></button>`).join("")}</div>`;
@@ -544,6 +559,8 @@ function renderSheet(fresh){
   const root = $("sheetRoot");
   if(!sheet){ root.innerHTML = ""; return; }
   if(sheet.type === "add") return renderAddSheet(fresh);
+  if(sheet.type === "ask") return renderAskSheet();
+  if(sheet.type === "reply") return renderReplySheet();
   const r = units.find(u => u.id === sheet.id);
   if(!r){ closeSheet(); return; }
   const st = STATUSES.includes(r.status) ? r.status : "Unviewed";
@@ -629,10 +646,145 @@ function renderAddSheet(){
   $("rescanBtn").onclick = () => q({type:"rescan"}, "Claude will scan for new homes");
 }
 
+/* ---------- Agent (WhatsApp) ---------- */
+let agent = null, asks = [];
+const AGENT = () => (agent && agent.name) || "Agent";
+const millis = t => !t ? 0 : typeof t.toMillis === "function" ? t.toMillis() : typeof t === "number" ? t : (Date.parse(t) || 0);
+const ymd = d => d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+function quickSlots(){
+  const out = [], d0 = new Date(); d0.setHours(0,0,0,0);
+  for(let i = 0; i <= 16 && out.length < 12; i++){
+    const x = new Date(d0.getTime() + i*864e5); if(x.getDay() !== 6 && x.getDay() !== 0) continue;
+    const day = x.toLocaleDateString("en-SG",{weekday:"short",day:"numeric",month:"short"});
+    [["Morning","10:00","10am–12pm"],["Afternoon","14:00","2–5pm"],["Evening","18:30","6:30–8pm"]].forEach(([n,st,lab]) => out.push({label:`${day} · ${n} (${lab})`, date:ymd(x), start:st}));
+  }
+  return out;
+}
+function randToken(n){ const a = new Uint8Array(n), c = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"; crypto.getRandomValues(a); return Array.from(a, b => c[b % c.length]).join(""); }
+function topFive(){
+  return units.filter(u => u.status !== "Rejected" && score(u) > 0).sort((a,b) => score(b)-score(a) || ratedBy(b)-ratedBy(a) || (a.distKm??99)-(b.distKm??99)).slice(0,5);
+}
+function openAsk(){
+  const top = topFive();
+  sheet = {type:"ask", sel:new Set(top.map(u => u.id)), slots:[], custom:"", note:""};
+  renderSheet(true);
+}
+function replySummary(a){
+  const hs = Object.values((a.reply||{}).homes||{});
+  const c = hs.filter(x => x.state === "confirmed").length, v = hs.filter(x => (x.view||"").trim()).length;
+  return [c ? `${c} viewing${c>1?"s":""} confirmed` : "", v ? `views on ${v} home${v>1?"s":""}` : "", (a.reply||{}).note ? "a note" : ""].filter(Boolean).join(", ") || "tap to see";
+}
+function renderAskSheet(){
+  const top = topFive(), topIds = new Set(top.map(u => u.id));
+  const others = units.filter(u => u.status !== "Rejected" && !topIds.has(u.id) && (score(u) > 0 || u.status === "Booked")).sort((a,b) => score(b)-score(a));
+  const row = u => `<label class="pick"><input type="checkbox" data-asksel="${esc(u.id)}" ${sheet.sel.has(u.id)?"checked":""}><span class="grow"><b>${esc(u.name)}</b><br><span style="color:var(--muted);font-size:12.5px">${esc(money(u.askingM))} · ${u.status==="Booked"&&u.appt?"booked "+esc(fmtWhen(u.appt))+" — will ask to reconfirm":esc(STATUS_LABEL[u.status]||"")}</span></span><span style="color:var(--rose);font-weight:700;font-size:13px">♥ ${score(u)}</span></label>`;
+  const qs = quickSlots(), chosen = new Set(sheet.slots.map(s => s.label));
+  const selUnits = [...sheet.sel].map(id => units.find(u => u.id === id)).filter(Boolean);
+  const needSlots = selUnits.some(u => !(u.status === "Booked" && u.appt));
+  const can = selUnits.length && (!needSlots || sheet.slots.length);
+  const past = asks.slice(0,5).map(a => `<div class="req"><span class="pill ${a.replyAt?"st-Offer":"st-Booked"}">${a.replyAt?"replied":"waiting"}</span><span class="grow" style="min-width:0">${esc((a.homes||[]).map(x => x.name).join(", "))}<br><span style="color:var(--muted)">${esc(NAME[a.by]||"")} · sent ${esc(ago(a.createdAt))}${a.replyAt?" · replied "+esc(ago(new Date(millis(a.replyAt)).toISOString())):""}</span></span>${a.replyAt?`<button class="btn sm" type="button" data-reply="${esc(a.id)}">See reply</button>`:""}</div>`).join("");
+  $("sheetRoot").innerHTML = `<div class="scrim" id="scrim"></div><div class="sheet" role="dialog" aria-modal="true" aria-label="Ask ${esc(AGENT())}">
+    <div class="hd"><h3>Ask ${esc(AGENT())}</h3><button class="close" id="closeSheet" type="button" aria-label="Close">×</button></div>
+    <div class="sc" id="sheetScroll">
+      <div class="box"><h4>Homes</h4>${top.map(row).join("")}${others.length?`<details style="margin-top:6px"><summary style="font-size:13px;color:var(--muted);cursor:pointer">Add other homes (${others.length})</summary>${others.map(row).join("")}</details>`:""}</div>
+      <div class="box"><h4>When we're free</h4><div class="chips">${qs.map((s,i) => `<button class="slot" type="button" data-qslot="${i}" aria-pressed="${chosen.has(s.label)}">${esc(s.label)}</button>`).join("")}</div>
+        ${sheet.slots.filter(s => !s.date).map(s => `<span class="chip" style="margin-top:8px;display:inline-flex">${esc(s.label)}<button class="x" type="button" data-rmslot="${esc(s.label)}" aria-label="Remove">×</button></span>`).join(" ")}
+        <form class="addtag" id="slotForm"><input id="slotIn" placeholder="Or type your own, e.g. Tue 21 Oct after 7pm" maxlength="60" autocomplete="off"><button class="btn sm" type="submit">Add</button></form>
+        ${needSlots && !sheet.slots.length ? `<p style="font-size:12.5px;color:var(--rose);margin:8px 0 0">Pick at least one time for the homes that aren't booked yet.</p>` : ""}</div>
+      <div class="box"><h4>Note (optional)</h4><div class="form"><label class="w"><textarea id="askNote" maxlength="400" placeholder="Anything else for ${esc(AGENT())}">${esc(sheet.note)}</textarea></label></div></div>
+      <button class="btn primary" type="button" id="sendAsk" style="width:100%;justify-content:center;padding:12px;margin-top:12px" ${can?"":"disabled"}>Send on WhatsApp</button>
+      <p style="font-size:12px;color:var(--muted);margin:8px 2px 0">WhatsApp opens with the message ready for you to send. It includes a private link where ${esc(AGENT())} can confirm times and share his views; they come straight back into the app. He only sees these homes, their listing links and your times.</p>
+      ${past?`<div class="box"><h4>Recent requests</h4>${past}</div>`:""}
+    </div></div>`;
+  $("scrim").onclick = closeSheet; $("closeSheet").onclick = closeSheet;
+  $("askNote").oninput = e => { sheet.note = e.target.value; };
+  $("slotForm").onsubmit = ev => { ev.preventDefault(); const v = $("slotIn").value.trim(); if(!v) return; if(!sheet.slots.some(s => s.label === v)) sheet.slots.push({label:v, date:"", start:""}); keepScroll(renderAskSheet); };
+  document.querySelectorAll("[data-asksel]").forEach(cb => cb.onchange = () => { cb.checked ? sheet.sel.add(cb.dataset.asksel) : sheet.sel.delete(cb.dataset.asksel); keepScroll(renderAskSheet); });
+  document.querySelectorAll("[data-qslot]").forEach(b => b.onclick = () => { const s = qs[+b.dataset.qslot]; const i = sheet.slots.findIndex(x => x.label === s.label); i >= 0 ? sheet.slots.splice(i,1) : sheet.slots.push(s); keepScroll(renderAskSheet); });
+  document.querySelectorAll("[data-rmslot]").forEach(b => b.onclick = () => { sheet.slots = sheet.slots.filter(s => s.label !== b.dataset.rmslot); keepScroll(renderAskSheet); });
+  $("sendAsk").onclick = sendAsk;
+}
+function keepScroll(fn){ const sc = $("sheetScroll"), y = sc ? sc.scrollTop : 0; fn(); const s2 = $("sheetScroll"); if(s2) s2.scrollTop = y; }
+async function sendAsk(){
+  const btn = $("sendAsk"); btn.disabled = true; btn.textContent = "Preparing…";
+  const homes = [...sheet.sel].map(id => units.find(u => u.id === id)).filter(Boolean).map(u => ({id:u.id, name:u.name||"", area:(u.area||"").split("·")[0].trim(), url:u.url||"", booked:u.status==="Booked" && !!u.appt, appt:u.status==="Booked" ? (u.appt||"") : ""}));
+  const token = randToken(32);
+  const doc = {createdAt:new Date().toISOString(), expiresAt:firebase.firestore.Timestamp.fromMillis(Date.now() + 14*864e5), by:me.key, from:NAME[me.key], agentName:AGENT(), homes, slots:sheet.slots.map(s => ({label:s.label, date:s.date||"", start:s.start||""})), note:(sheet.note||"").trim()};
+  try { await db.collection("hs_agent").doc(token).set(doc); }
+  catch(e){ toast("Couldn't prepare the request — check your connection"); btn.disabled = false; btn.textContent = "Send on WhatsApp"; return; }
+  const link = location.origin + location.pathname.replace(/[^/]*$/, "") + "agent.html#" + token;
+  const toBook = homes.filter(x => !x.booked), toConfirm = homes.filter(x => x.booked);
+  const L = [];
+  L.push(`Hi ${AGENT()}, it's ${NAME[me.key]} here 🙂`);
+  if(toBook.length){ L.push("", `${NAME.shernice ? "Shernice and I" : "We"} would like to view ${toBook.length > 1 ? "these homes" : "this home"}:`); toBook.forEach((x,i) => L.push(`${i+1}. ${x.name}${x.area?" – "+x.area:""}${x.url?"\n   "+x.url:""}`)); }
+  if(toConfirm.length){ L.push("", "Already booked – could you please reconfirm:"); toConfirm.forEach(x => L.push(`• ${x.name} – ${fmtWhen(x.appt)}`)); }
+  if(doc.slots.length){ L.push("", "We're free:"); doc.slots.forEach(s => L.push(`• ${s.label}`)); }
+  if(doc.note) L.push("", doc.note);
+  L.push("", "Could you arrange the viewings and share your views on each home? You can reply here, or use this link to confirm times and add your thoughts – it updates our list directly:", link, "", "Thanks!");
+  const phone = String(agent.phone || "").replace(/\D/g, "");
+  closeSheet();
+  location.href = "https://wa.me/" + phone + "?text=" + encodeURIComponent(L.join("\n"));
+}
+async function addComment(id, by, text){
+  const at = new Date().toISOString();
+  await unitRef(id).collection("comments").add({by, text, at});
+  await unitRef(id).update({commentCount:FV.increment(1), lastComment:{by, text:text.slice(0,140), at}});
+}
+const applying = new Set();
+async function applyReply(a){
+  const rAt = millis(a.replyAt);
+  if(!rAt || (a.appliedAt||0) >= rAt || applying.has(a.id)) return;
+  applying.add(a.id);
+  const ref = db.collection("hs_agent").doc(a.id);
+  let claim = null;
+  try {
+    await db.runTransaction(async tx => {
+      const s = await tx.get(ref); const d = s.data() || {}; const r = millis(d.replyAt);
+      if(!r || (d.appliedAt||0) >= r) return;
+      tx.update(ref, {appliedAt:r, appliedReply:d.reply||{}});
+      claim = {reply:d.reply||{}, prev:d.appliedReply||{}};
+    });
+  } catch(e){ applying.delete(a.id); return; }
+  applying.delete(a.id);
+  if(!claim) return;
+  const homes = claim.reply.homes || {}, prevH = claim.prev.homes || {};
+  for(const [id, x] of Object.entries(homes)){
+    const u = units.find(z => z.id === id); if(!u) continue;
+    const p = prevH[id] || {}, upd = {}, lines = [];
+    const confirmedNow = x.state === "confirmed" && x.appt && (x.appt !== p.appt || p.state !== "confirmed");
+    if(confirmedNow){ upd.status = (u.status === "Viewed" || u.status === "Offer") ? u.status : "Booked"; upd.appt = x.appt; upd.agent = AGENT() + (agent && agent.phone ? " " + String(agent.phone).replace(/^65/, "") : ""); lines.push("Viewing confirmed for " + fmtWhen(x.appt) + "."); }
+    if(x.state === "unavailable" && p.state !== "unavailable") lines.push("Can't arrange a viewing for now.");
+    if(x.state === "sold" && p.state !== "sold"){ upd.listingState = "Sold (per agent)"; upd.updatedAt = new Date().toISOString(); upd.updateNote = AGENT() + " says this unit is sold or withdrawn"; lines.push("This unit is sold or withdrawn."); }
+    if((x.view||"").trim() && x.view !== p.view) lines.push(x.view.trim());
+    try { if(Object.keys(upd).length) await unitRef(id).update(upd); if(lines.length) await addComment(id, "agent", lines.join(" ")); } catch(e){}
+  }
+}
+function openReply(id){
+  const a = asks.find(x => x.id === id); if(!a) return;
+  sheet = {type:"reply", id};
+  if(a.replyAt) db.collection("hs_agent").doc(id).update({["seenReplyBy." + me.key]: millis(a.replyAt)}).catch(()=>{});
+  renderSheet(true);
+}
+function renderReplySheet(){
+  const a = asks.find(x => x.id === sheet.id); if(!a){ closeSheet(); return; }
+  const rh = (a.reply||{}).homes || {};
+  const ST = {confirmed:"✅ Confirmed", unavailable:"⛔ Can't arrange", sold:"🏷️ Sold / withdrawn", pending:"⏳ Still checking"};
+  $("sheetRoot").innerHTML = `<div class="scrim" id="scrim"></div><div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(AGENT())}'s reply">
+    <div class="hd"><h3>${esc(AGENT())}'s reply</h3><button class="close" id="closeSheet" type="button" aria-label="Close">×</button></div>
+    <div class="sc" id="sheetScroll">
+      ${(a.reply||{}).note ? `<div class="box"><h4>His note</h4><div class="notes">${esc(a.reply.note)}</div></div>` : ""}
+      <div class="box"><h4>Homes</h4>${(a.homes||[]).map(x => { const r = rh[x.id] || {}; return `<div class="reply"><b>${esc(x.name)}</b> <span style="color:var(--muted)">${esc(ST[r.state] || "No update yet")}${r.state==="confirmed"&&r.appt?" · "+esc(fmtWhen(r.appt)):""}</span>${(r.view||"").trim()?`<div style="margin-top:4px">“${esc(r.view.trim())}”</div>`:""}<div style="margin-top:6px"><button class="btn sm" type="button" data-open="${esc(x.id)}">Open home</button></div></div>`; }).join("")}</div>
+      <p style="font-size:12px;color:var(--muted);margin:8px 2px 0">Confirmed times are already in Viewings, and his views are in each home's chat. Sent by ${esc(a.from||NAME[a.by]||"")} ${esc(ago(a.createdAt))}; his link works until ${esc(new Date(millis(a.expiresAt)).toLocaleDateString("en-SG",{day:"numeric",month:"short"}))}.</p>
+    </div></div>`;
+  $("scrim").onclick = closeSheet; $("closeSheet").onclick = closeSheet;
+}
+
 /* ---------- Events ---------- */
 document.addEventListener("click", ev => {
   const t = ev.target.closest("button,[data-open]"); if(!t || !me) return;
   if(t.classList.contains("tab")){ tab = t.dataset.tab; try{localStorage.setItem("hs-tab",tab);}catch(e){} render(); window.scrollTo(0,0); return; }
+  if(t.id === "askBtn"){ openAsk(); return; }
+  if(t.dataset.reply){ openReply(t.dataset.reply); return; }
   if(t.id === "fab"){ sheet = {type:"add"}; renderSheet(true); return; }
   if(t.dataset.open){ openUnit(t.dataset.open); return; }
   if(t.dataset.rate){ const id = t.dataset.rate, n = +t.dataset.n; const r = units.find(u => u.id === id); const cur = r ? ratingOf(r, me.key) : 0; const upd = {["ratings."+me.key]: cur === n ? 0 : n};

@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Viewing request</title>
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#3F7D4E">
+<link rel="icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=Figtree:wght@400;500;600;700&display=swap">
+<style>
+/* A one-page reply form for the agent: who's asking, the homes, their free times,
+   and per home a confirmed time + his view. Same warm palette as the app. */
+:root{--bg:#FBF8F5;--paper:#fff;--ink:#2A2226;--muted:#776A70;--line:#EDE4DE;--pandan:#3F7D4E;--pandan-soft:#E4F0E6;--kaya-soft:#FBF1D6;--rose:#D9546E;
+  --shadow:0 1px 2px rgba(42,34,38,.06),0 6px 18px rgba(42,34,38,.06);--fd:"Bricolage Grotesque","Avenir Next","Segoe UI",sans-serif;--fb:"Figtree",-apple-system,"Segoe UI",Roboto,sans-serif;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#17141A;--paper:#221D24;--ink:#F2ECEE;--muted:#B4A7AD;--line:#352D37;--pandan:#7CC492;--pandan-soft:#21352A;--kaya-soft:#3A3120;--rose:#F07A92;--shadow:0 1px 2px rgba(0,0,0,.3),0 6px 18px rgba(0,0,0,.25);color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 var(--fb);-webkit-text-size-adjust:100%}
+button,input,select,textarea{font:inherit;color:inherit}
+.wrap{max-width:640px;margin:0 auto;padding:calc(env(safe-area-inset-top,0px) + 18px) 16px calc(env(safe-area-inset-bottom,0px) + 40px)}
+h1{font:800 24px/1.15 var(--fd);margin:0 0 4px}
+.sub{color:var(--muted);margin:0 0 14px}
+.box{background:var(--paper);border-radius:16px;box-shadow:var(--shadow);padding:14px;margin-top:12px}
+.box h2{font:700 18px/1.2 var(--fd);margin:0}
+.box h3{font:700 12.5px var(--fb);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 8px}
+.meta{color:var(--muted);font-size:13px;margin-top:2px}
+a{color:var(--pandan)}
+.slots{display:flex;flex-wrap:wrap;gap:6px}
+.slot{font-size:13px;border-radius:999px;background:var(--pandan-soft);color:var(--pandan);padding:4px 10px;font-weight:600}
+.opts{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}
+.opt{border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:9px 8px;font-size:13.5px;font-weight:600;text-align:center;cursor:pointer}
+.opt[aria-pressed="true"]{background:var(--pandan);border-color:var(--pandan);color:#fff}
+label{display:flex;flex-direction:column;gap:4px;font-size:12.5px;font-weight:600;color:var(--muted);margin-top:10px}
+input,select,textarea{width:100%;min-width:0;border:1px solid var(--line);border-radius:10px;padding:9px 10px;background:var(--bg);font-size:15px;color:var(--ink);font-weight:400}
+textarea{min-height:76px;resize:vertical}
+.send{width:100%;margin-top:16px;border:none;border-radius:12px;background:var(--pandan);color:#fff;font-weight:700;font-size:16px;padding:14px;cursor:pointer}
+.send:disabled{opacity:.6}
+.ok{background:var(--pandan-soft);color:var(--pandan);border-radius:12px;padding:12px 14px;margin-top:12px;font-weight:600}
+.err{color:var(--rose)}
+.booked{display:inline-block;font-size:11.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;background:var(--kaya-soft);border-radius:6px;padding:2px 7px;margin-left:6px;vertical-align:2px}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div class="wrap" id="root"><h1>Loading…</h1></div>
+<script src="config.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script>
+(function(){
+"use strict";
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmtWhen = s => { if(!s) return ""; const d = new Date(s); return isNaN(d) ? s : d.toLocaleString("en-SG",{weekday:"short",day:"numeric",month:"short",hour:"numeric",minute:"2-digit"}); };
+const token = (location.hash || "").replace(/^#/, "");
+const root = $("root");
+if(!/^[A-Za-z0-9]{24,}$/.test(token)){ root.innerHTML = `<h1>Link not recognised</h1><p class="sub">Please use the full link from the WhatsApp message.</p>`; return; }
+firebase.initializeApp(window.HOME_SHORTLIST.firebase);
+const ref = firebase.firestore().collection("hs_agent").doc(token);
+const STATES = [["confirmed","✅ Confirmed"],["pending","⏳ Still checking"],["unavailable","⛔ Can't arrange"],["sold","🏷️ Sold / withdrawn"]];
+let req = null, state = {};
+
+ref.get().then(s => {
+  if(!s.exists){ throw new Error("missing"); }
+  req = s.data();
+  const prev = (req.reply && req.reply.homes) || {};
+  (req.homes || []).forEach(h => {
+    const p = prev[h.id] || {};
+    state[h.id] = {state: p.state || (h.booked ? "confirmed" : "pending"), appt: p.appt || (h.booked ? h.appt : ""), view: p.view || ""};
+  });
+  render();
+}).catch(() => { root.innerHTML = `<h1>This link has expired</h1><p class="sub">Please ask for a fresh link on WhatsApp.</p>`; });
+
+function slotOptions(cur){
+  const opts = (req.slots || []).filter(s => s.date).map(s => [s.date + "T" + s.start, s.label]);
+  return `<option value="">Pick one of their times…</option>` + opts.map(([v,l]) => `<option value="${esc(v)}" ${v===cur?"selected":""}>${esc(l)}</option>`).join("");
+}
+function render(){
+  const from = req.from || "Adrian";
+  const expires = req.expiresAt && req.expiresAt.toDate ? req.expiresAt.toDate().toLocaleDateString("en-SG",{day:"numeric",month:"short"}) : "";
+  root.innerHTML = `<h1>Hi ${esc(req.agentName || "")} 👋</h1>
+    <p class="sub">${esc(from)} &amp; Shernice would like to view these homes. Confirm the times you can arrange and share your views — it goes straight to them. You can come back and update this until ${esc(expires)}.</p>
+    ${(req.slots||[]).length ? `<div class="box"><h3>When they're free</h3><div class="slots">${req.slots.map(s => `<span class="slot">${esc(s.label)}</span>`).join("")}</div></div>` : ""}
+    ${req.note ? `<div class="box"><h3>Their note</h3>${esc(req.note)}</div>` : ""}
+    ${(req.homes||[]).map((h,i) => { const st = state[h.id]; return `<div class="box">
+      <h2>${i+1}. ${esc(h.name)}${h.booked?`<span class="booked">booked</span>`:""}</h2>
+      <div class="meta">${esc(h.area||"")}${h.booked?` · currently ${esc(fmtWhen(h.appt))} — please reconfirm`:""}${h.url?` · <a href="${esc(h.url)}" target="_blank" rel="noopener">Listing ↗</a>`:""}</div>
+      <div class="opts">${STATES.map(([k,l]) => `<button class="opt" type="button" data-h="${esc(h.id)}" data-st="${k}" aria-pressed="${st.state===k}">${l}</button>`).join("")}</div>
+      <div ${st.state==="confirmed"?"":"hidden"}>
+        ${(req.slots||[]).some(s => s.date) ? `<label>Quick pick<select data-slot="${esc(h.id)}">${slotOptions(st.appt)}</select></label>` : ""}
+        <label>Viewing date &amp; time<input type="datetime-local" data-appt="${esc(h.id)}" value="${esc(st.appt)}"></label>
+      </div>
+      <label>Your view on this home (optional)<textarea data-view="${esc(h.id)}" maxlength="800" placeholder="Condition, seller's flexibility, pros and cons…">${esc(st.view)}</textarea></label>
+    </div>`; }).join("")}
+    <div class="box"><h3>Anything else? (optional)</h3><textarea id="note" maxlength="800" placeholder="A note for both of them">${esc((req.reply && req.reply.note) || "")}</textarea></div>
+    <button class="send" id="send" type="button">Send to ${esc(from)} &amp; Shernice</button>
+    <div id="msg"></div>`;
+  root.querySelectorAll("[data-st]").forEach(b => b.onclick = () => { keepNote(); state[b.dataset.h].state = b.dataset.st; const y = scrollY; render(); scrollTo(0, y); });
+  root.querySelectorAll("[data-slot]").forEach(s => s.onchange = () => { if(!s.value) return; state[s.dataset.slot].appt = s.value; root.querySelector(`[data-appt="${CSS.escape(s.dataset.slot)}"]`).value = s.value; });
+  root.querySelectorAll("[data-appt]").forEach(i => i.onchange = () => { state[i.dataset.appt].appt = i.value; });
+  root.querySelectorAll("[data-view]").forEach(t => t.oninput = () => { state[t.dataset.view].view = t.value; });
+  $("send").onclick = send;
+}
+function keepNote(){ const n = $("note"); if(n){ req.reply = Object.assign({}, req.reply, {note: n.value}); } }
+async function send(){
+  const missing = (req.homes||[]).filter(h => state[h.id].state === "confirmed" && !state[h.id].appt);
+  if(missing.length){ $("msg").innerHTML = `<p class="err">Please add a date and time for ${esc(missing.map(h => h.name).join(", "))}, or choose another option.</p>`; return; }
+  const btn = $("send"); btn.disabled = true; btn.textContent = "Sending…";
+  const homes = {};
+  Object.entries(state).forEach(([id, s]) => { homes[id] = {state: s.state, appt: s.state === "confirmed" ? s.appt : "", view: (s.view||"").trim().slice(0,800)}; });
+  try {
+    await ref.update({reply: {homes, note: ($("note").value||"").trim().slice(0,800)}, replyAt: firebase.firestore.FieldValue.serverTimestamp()});
+    $("msg").innerHTML = `<div class="ok">Thank you! Sent to them. You can change anything and send again any time.</div>`;
+  } catch(e){
+    $("msg").innerHTML = `<p class="err">Couldn't send — please check your connection and try again.</p>`;
+  }
+  btn.disabled = false; btn.textContent = "Send again";
+}
+})();
+</script>
+</body>
+</html>
