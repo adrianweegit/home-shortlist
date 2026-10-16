@@ -167,6 +167,7 @@ table.cmp{border-collapse:collapse;width:100%;min-width:520px;font-size:13px}
 
 /* Toolbar */
 .tool{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.search{width:100%;border:1px solid var(--line);background:var(--paper);border-radius:999px;padding:10px 14px 10px 38px;font-size:15px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' fill='none' stroke='%23776A70' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='8' cy='8' r='6'/%3E%3Cpath d='m13 13 4 4'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:13px center;-webkit-appearance:none}
 .tool select{border:1px solid var(--line);background:var(--paper);border-radius:10px;padding:6px 8px;font-size:13px}
 .scrollx{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
 .scrollx::-webkit-scrollbar{display:none}
@@ -252,6 +253,7 @@ let meta = null;
 let tab = "top";
 let filter = "active";
 let sort = "dist";
+let query = "";
 let compare = [];
 let sheet = null;           // {type:"unit", id} | {type:"add"}
 let unsubComments = null;
@@ -356,7 +358,9 @@ function render(){
   else if(tab === "view") body = viewViewings();
   else if(tab === "cmp") body = viewCompare();
   else body = viewHomes();
+  const ae = document.activeElement, keepQ = ae && ae.id === "q" ? ae.selectionStart : null;
   $("app").innerHTML = head + body;
+  if(keepQ !== null && $("q")){ $("q").focus(); try{ $("q").setSelectionRange(keepQ, keepQ); }catch(e){} }
   $("signout").onclick = () => auth.signOut();
 }
 
@@ -454,13 +458,22 @@ const FILTERS = [
   ["rejected","Rejected", u => u.status === "Rejected"],
   ["all","All", () => true]
 ];
-function viewHomes(){
+function homesFiltered(){
   const fn = (FILTERS.find(f => f[0] === filter) || FILTERS[0])[2];
   const sorters = {dist:(a,b)=>(a.distKm??99)-(b.distKm??99), hearts:(a,b)=>score(b)-score(a)||(a.distKm??99)-(b.distKm??99), price:(a,b)=>(a.askingM??99)-(b.askingM??99), value:(a,b)=>((a.askingM??99)-(a.fairHighM??a.askingM??99))-((b.askingM??99)-(b.fairHighM??b.askingM??99))};
-  const list = units.filter(fn).sort(sorters[sort] || sorters.dist);
-  return `<div class="tool"><div class="scrollx">${FILTERS.map(([k,l,f]) => `<button class="chip f" type="button" data-filter="${k}" aria-pressed="${filter===k}">${esc(l)} ${units.filter(f).length}</button>`).join("")}</div>
+  const q = query.trim().toLowerCase();
+  return (q ? units.filter(u => [u.name,u.area,u.mrt,u.format].join(" ").toLowerCase().includes(q)) : units.filter(fn)).sort(sorters[sort] || sorters.dist);
+}
+function viewHomes(){
+  const list = homesFiltered(), q = query.trim();
+  return `<input class="search" id="q" type="search" placeholder="Search by name, area or MRT" value="${esc(query)}" autocomplete="off" enterkeyhint="search" style="margin-bottom:10px">
+    <div class="tool"><div class="scrollx">${FILTERS.map(([k,l,f]) => `<button class="chip f" type="button" data-filter="${k}" aria-pressed="${filter===k}">${esc(l)} ${units.filter(f).length}</button>`).join("")}</div>
     <label style="font-size:13px;color:var(--muted)">Sort <select id="sort"><option value="dist" ${sort==="dist"?"selected":""}>Closest to Kovan</option><option value="hearts" ${sort==="hearts"?"selected":""}>Most hearts</option><option value="price" ${sort==="price"?"selected":""}>Lowest price</option><option value="value" ${sort==="value"?"selected":""}>Best vs fair value</option></select></label></div>
-    ${list.length ? `<div class="list two">${list.map(card).join("")}</div>` : `<div class="empty">Nothing here yet.</div>`}`;
+    <div id="homeList">${homeList(list, q)}</div>`;
+}
+function homeList(list, q){
+  if(!list.length) return `<div class="empty">${q ? "No homes match “" + esc(query.trim()) + "”." : "Nothing here yet."}</div>`;
+  return (q ? `<div style="font-size:13px;color:var(--muted);margin-bottom:8px">${list.length} match${list.length>1?"es":""} across all homes</div>` : "") + `<div class="list two">${list.map(card).join("")}</div>`;
 }
 function viewCompare(){
   const sel = compare.map(id => units.find(u => u.id === id)).filter(Boolean);
@@ -587,6 +600,8 @@ document.addEventListener("click", ev => {
   if(t.dataset.check){ const r = units.find(u => u.id === t.dataset.check); if(!r) return; const c = t.dataset.c; save(r.id, {["checks."+ckey(c)]: !(r.checks||{})[ckey(c)]}); return; }
   if(t.dataset.untag){ const r = units.find(u => u.id === sheet.id); if(!r) return; const arr = (r[t.dataset.untag]||[]); save(r.id, {[t.dataset.untag]: FV.arrayRemove(arr[+t.dataset.i])}); return; }
 });
+document.addEventListener("input", ev => { if(ev.target.id === "q"){ query = ev.target.value; const el = $("homeList"); if(!el) return;
+  el.innerHTML = homeList(homesFiltered(), query.trim()); } });
 document.addEventListener("change", ev => { if(ev.target.id === "sort"){ sort = ev.target.value; render(); } });
 document.addEventListener("keydown", ev => { if(ev.key === "Escape" && sheet) closeSheet(); });
 
