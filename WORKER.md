@@ -20,3 +20,8 @@ For every unit you add (and any unit missing `lat`/`transit`):
    on first use).
 
 Do not write `transit` by hand, and do not change `hs_meta/places`.
+
+## Fields the app owns
+Also never change `nope`, `prevStatus` or `nopeRejected` (thumbs-down votes).
+A unit with `nopeRejected: true` was turned down by both of them: never re-add
+that listing in a rescan.

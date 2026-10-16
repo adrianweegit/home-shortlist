@@ -115,8 +115,12 @@ h2.sec small{font:500 13px var(--f-body);color:var(--muted)}
 .hrow .nm{width:62px;font-weight:600;color:var(--muted)}
 .hbtn{background:none;border:none;padding:2px;font-size:20px;line-height:1;color:var(--line)}
 .hbtn.on{color:var(--rose)}
+.tbtn{background:none;border:1px solid transparent;border-radius:8px;padding:1px 4px;font-size:17px;line-height:1.2;filter:grayscale(1);opacity:.35}
+.tbtn.on{filter:none;opacity:1;background:var(--line);border-color:var(--line)}
+.hrow.ro .tbtn{cursor:default}
+.hsep{width:1px;height:18px;background:var(--line);margin:0 2px}
 .hrow.ro .hbtn{cursor:default}
-.hrow .none{color:var(--muted);font-size:12px}
+.hrow .none{color:var(--muted);font-size:12px;white-space:nowrap}
 .foot{display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-top:1px solid var(--line);padding:10px 14px}
 .btn{border:1px solid var(--line);background:var(--paper);border-radius:10px;padding:7px 12px;font-weight:600;font-size:13px;text-decoration:none;color:var(--ink);display:inline-flex;align-items:center;gap:6px}
 .btn.primary{background:var(--pandan);border-color:var(--pandan);color:#fff}
@@ -384,10 +388,13 @@ function render(){
 }
 
 /* ---------- Card ---------- */
+const noped = (r,k) => !!(r.nope && r.nope[k]);
 function heartsRow(r, k){
   const v = ratingOf(r,k); const mine = k === me.key;
+  const no = noped(r,k);
+  const thumb = `<button class="tbtn ${no?"on":""}" type="button" ${mine?`data-nope="${esc(r.id)}"`:"disabled"} aria-pressed="${no}" aria-label="${mine?(no?"Undo thumbs down":"Thumbs down"):NAME[k]+(no?" gave a thumbs down":" no thumbs down")}">👎</button>`;
   const btns = [1,2,3,4,5].map(n => `<button class="hbtn ${n<=v?"on":""}" type="button" ${mine?`data-rate="${esc(r.id)}" data-n="${n}"`:"disabled"} aria-label="${mine?"Rate "+n+" of 5":NAME[k]+" rated "+v}">♥</button>`).join("");
-  return `<div class="hrow ${mine?"":"ro"}"><span class="nm">${esc(NAME[k])}</span>${btns}${!mine && !v ? `<span class="none">not rated yet</span>` : ""}</div>`;
+  return `<div class="hrow ${mine?"":"ro"}"><span class="nm">${esc(NAME[k])}</span>${thumb}<span class="hsep"></span>${btns}${!mine && !v && !no ? `<span class="none">not rated yet</span>` : no && !mine ? `<span class="none">said no</span>` : ""}</div>`;
 }
 function bar(r){
   if(typeof r.askingM !== "number") return "";
@@ -432,7 +439,7 @@ function viewTop(){
   const active = units.filter(u => u.status !== "Rejected");
   const ranked = active.filter(u => score(u) > 0).sort((a,b) => score(b)-score(a) || ratedBy(b)-ratedBy(a) || (a.distKm??99)-(b.distKm??99));
   const top = ranked.slice(0,5);
-  const unrated = active.filter(u => !ratingOf(u, me.key));
+  const unrated = active.filter(u => !ratingOf(u, me.key) && !noped(u, me.key));
   let h = `<h2 class="sec">Our Top 5 <small>by combined hearts</small></h2>`;
   if(!top.length) h += `<div class="empty">No hearts yet. Open <b>Homes</b> and give each place 1–5 ♥ — your Top 5 builds itself.</div>`;
   else {
@@ -473,7 +480,7 @@ const FILTERS = [
   ["active","In play", u => u.status !== "Rejected"],
   ["budget","Within budget", u => u.status !== "Rejected" && typeof u.askingM === "number" && u.askingM <= CFG.budgetM],
   ["new","New", u => u.isNew && u.status !== "Rejected"],
-  ["mine","Not rated by me", u => u.status !== "Rejected" && !ratingOf(u, me.key)],
+  ["mine","Not rated by me", u => u.status !== "Rejected" && !ratingOf(u, me.key) && !noped(u, me.key)],
   ["booked","Booked", u => u.status === "Booked"],
   ["viewed","Viewed", u => u.status === "Viewed" || u.status === "Offer"],
   ["rejected","Rejected", u => u.status === "Rejected"],
@@ -619,7 +626,20 @@ document.addEventListener("click", ev => {
   if(t.classList.contains("tab")){ tab = t.dataset.tab; try{localStorage.setItem("hs-tab",tab);}catch(e){} render(); window.scrollTo(0,0); return; }
   if(t.id === "fab"){ sheet = {type:"add"}; renderSheet(true); return; }
   if(t.dataset.open){ openUnit(t.dataset.open); return; }
-  if(t.dataset.rate){ const id = t.dataset.rate, n = +t.dataset.n; const r = units.find(u => u.id === id); const cur = r ? ratingOf(r, me.key) : 0; save(id, {["ratings."+me.key]: cur === n ? 0 : n}); return; }
+  if(t.dataset.rate){ const id = t.dataset.rate, n = +t.dataset.n; const r = units.find(u => u.id === id); const cur = r ? ratingOf(r, me.key) : 0; const upd = {["ratings."+me.key]: cur === n ? 0 : n};
+    if(r && noped(r, me.key)){ upd["nope."+me.key] = false; if(r.status === "Rejected" && r.nopeRejected){ upd.status = r.prevStatus || "Unviewed"; upd.nopeRejected = false; } }
+    save(id, upd); return; }
+  if(t.dataset.nope){ const r = units.find(u => u.id === t.dataset.nope); if(!r) return;
+    const on = !noped(r, me.key); const upd = {["nope."+me.key]: on};
+    if(on){ upd["ratings."+me.key] = 0;
+      const both = KEYS.every(k => k === me.key || noped(r, k));
+      if(both && r.status !== "Rejected"){ upd.status = "Rejected"; upd.prevStatus = r.status || "Unviewed"; upd.nopeRejected = true; upd.appt = ""; }
+      save(r.id, upd, both ? "You both said no — moved to Rejected" : "Thumbs down saved");
+    } else {
+      if(r.status === "Rejected" && r.nopeRejected){ upd.status = r.prevStatus || "Unviewed"; upd.nopeRejected = false; }
+      save(r.id, upd, r.nopeRejected ? "Back in the list" : "Thumbs down removed");
+    }
+    return; }
   if(t.dataset.filter){ filter = t.dataset.filter; render(); return; }
   if(t.dataset.cmp){ const id = t.dataset.cmp; compare = compare.includes(id) ? compare.filter(x => x !== id) : compare.concat(id).slice(-3); try{localStorage.setItem("hs-cmp",JSON.stringify(compare));}catch(e){} render(); toast(compare.includes(id) ? "Added to Compare (" + compare.length + "/3)" : "Removed from Compare"); return; }
   if(t.id === "clearcmp"){ compare = []; try{localStorage.setItem("hs-cmp","[]");}catch(e){} render(); return; }
