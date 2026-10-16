@@ -439,7 +439,8 @@ function viewItem(u, compact){
     <div class="chips" style="margin-top:10px"><a class="btn sm" href="${map}" target="_blank" rel="noopener">Map ↗</a><button class="btn sm" type="button" data-open="${esc(u.id)}">Details & notes</button></div></div>`;
 }
 function viewViewings(){
-  const booked = units.filter(u => (u.status === "Booked" || u.status === "Viewed" || u.status === "Offer") || u.appt);
+  // Only homes whose status says a viewing is booked or done; a stray date on a "Not viewed" home doesn't count.
+  const booked = units.filter(u => u.status === "Booked" || u.status === "Viewed" || u.status === "Offer");
   const now = Date.now();
   const up = booked.filter(u => u.status === "Booked" && (!u.appt || new Date(u.appt) >= now - 3*3600e3)).sort((a,b) => new Date(a.appt||8.64e15) - new Date(b.appt||8.64e15));
   const past = booked.filter(u => !up.includes(u)).sort((a,b) => new Date(b.appt||0) - new Date(a.appt||0));
@@ -554,7 +555,7 @@ function renderSheet(fresh){
   sc.scrollTop = keep;
   renderMsgs();
   // wire
-  $("stSel").onchange = e => save(r.id, {status:e.target.value}, "Status updated");
+  $("stSel").onchange = e => save(r.id, {status:e.target.value, ...(e.target.value === "Unviewed" ? {appt:""} : {})}, e.target.value === "Unviewed" ? "Status updated, viewing date cleared" : "Status updated");
   $("apptIn").onchange = e => save(r.id, {appt:e.target.value, ...(e.target.value && r.status==="Unviewed" ? {status:"Booked"} : {})}, "Viewing saved");
   $("agentIn").onchange = e => save(r.id, {agent:e.target.value.trim()}, "Saved");
   const addTag = kindKey => { const v = $("tagIn").value.trim(); if(!v) return; $("tagIn").value = ""; save(r.id, {[kindKey]: FV.arrayUnion(v)}); };
