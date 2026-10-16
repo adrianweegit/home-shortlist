@@ -123,6 +123,14 @@ h2.sec small{font:500 13px var(--f-body);color:var(--muted)}
 .btn.danger{color:var(--rose);border-color:var(--rose)}
 .btn.sm{padding:5px 9px;font-size:12px}
 .grow{flex:1}
+.trips{display:flex;flex-wrap:wrap;gap:6px}
+.trip{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;border-radius:999px;padding:4px 10px;background:var(--bg);border:1px solid var(--line)}
+.trip i{width:9px;height:9px;border-radius:50%;background:var(--muted);flex:0 0 9px}
+.trip.easy i{background:var(--pandan)} .trip.ok i{background:var(--kaya)} .trip.hard i{background:var(--rose)}
+.route{padding:10px 0;border-bottom:1px solid var(--line)} .route:last-child{border-bottom:none}
+.route .hd2{display:flex;align-items:center;gap:8px;font-weight:700}
+.route .rt{font-size:13.5px;margin-top:4px}
+.route .meta{font-size:12px;color:var(--muted);margin-top:2px}
 .lastc{font-size:13px;background:var(--bg);border-radius:12px;padding:8px 10px}
 .lastc b{font-weight:700}
 .cmp-on{background:var(--kaya-soft);border-color:var(--kaya)}
@@ -251,6 +259,7 @@ let me = null;              // {key,name,email}
 let units = [];
 let reqs = [];
 let meta = null;
+let places = [];
 let tab = "top";
 let filter = "active";
 let sort = "dist";
@@ -290,6 +299,14 @@ function pic(k){
   const extra = k==="ph" ? `<path d="M10 6h24" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="34" cy="3" r="2.5" fill="currentColor"/>` : k==="gf" ? `<path d="M2 54h40" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><circle cx="40" cy="48" r="4" fill="currentColor"/>` : k==="high" ? `<circle cx="39" cy="10" r="3.5" fill="none" stroke="currentColor" stroke-width="2"/>` : "";
   return `<svg viewBox="0 0 44 58" aria-hidden="true">${floors}${extra}</svg>`;
 }
+const RATE_LABEL = {easy:"Easy", ok:"OK", hard:"Hard"};
+const tripOf = (r, k) => r.transit && r.transit[k];
+function tripChips(r){
+  if(!places.length || !r.transit) return "";
+  return `<div class="trips">${places.map(p => { const t = tripOf(r, p.key); return t ? `<span class="trip ${esc(t.rating)}" title="${esc(t.route)}"><i></i>${esc(p.emoji||"")} ${esc(p.short||p.label)} ≈${esc(t.min)} min${t.xfers?` · ${t.xfers} change${t.xfers>1?"s":""}`:""}</span>` : ""; }).join("")}</div>`;
+}
+const tripScore = r => !places.length || !r.transit ? 999 : places.reduce((a,p) => { const t = tripOf(r,p.key); return a + (t ? t.min + (t.rating==="hard"?15:t.rating==="ok"?5:0) : 120); }, 0);
+const dirUrl = (r, p) => `https://www.google.com/maps/dir/?api=1&origin=${r.lat},${r.lng}&destination=${p.lat},${p.lng}&travelmode=transit`;
 function autoConcerns(r){
   const out = [];
   if(typeof r.askingM === "number" && r.askingM > CFG.budgetM) out.push("Over budget");
@@ -339,6 +356,7 @@ function start(){
   unsubs.push(db.collection("hs_requests").orderBy("createdAt","desc").limit(8).onSnapshot(s => {
     reqs = s.docs.map(d => Object.assign({id:d.id}, d.data())); if(sheet && sheet.type === "add") renderSheet();
   }, ()=>{}));
+  unsubs.push(db.doc("hs_meta/places").onSnapshot(s => { places = (s.exists && s.data().items) || []; render(); if(sheet && sheet.type === "unit") renderSheet(); }, ()=>{}));
   unsubs.push(db.doc("hs_meta/worker").onSnapshot(s => { meta = s.exists ? s.data() : null; if(sheet && sheet.type === "add") renderSheet(); }, ()=>{}));
 }
 const unitRef = id => db.collection("hs_units").doc(id);
@@ -395,6 +413,7 @@ function card(r){
       <div class="money"><span class="ask ${r.askingM>CFG.budgetM?"over":""}">${esc(money(r.askingM))}</span><span class="fair">fair ${esc(fairTxt(r))}</span></div>
       ${bar(r)}
       <div class="chips"><span class="chip fact">${esc(r.beds||"")}</span>${r.sizeSqft?`<span class="chip fact">${Number(r.sizeSqft).toLocaleString("en-SG")} sqft</span>`:""}<span class="chip fact">🚇 ${esc(r.mrt||"—")}${r.mrtDist?" · "+esc(r.mrtDist):""}</span><span class="chip fact">⏳ ${esc(r.lease||"—")}</span><span class="chip fact">${esc(r.format||"")}</span></div>
+      ${tripChips(r)}
       ${loves||concerns ? `<div class="chips">${loves}${concerns}</div>` : ""}
       <div class="hearts">${KEYS.map(k2 => heartsRow(r,k2)).join("")}</div>
       ${lc ? `<div class="lastc"><b>${esc(NAME[lc.by]||lc.by)}:</b> ${esc(lc.text)} <span style="color:var(--muted)">· ${esc(ago(lc.at))}</span></div>` : ""}
@@ -462,7 +481,7 @@ const FILTERS = [
 ];
 function homesFiltered(){
   const fn = (FILTERS.find(f => f[0] === filter) || FILTERS[0])[2];
-  const sorters = {dist:(a,b)=>(a.distKm??99)-(b.distKm??99), hearts:(a,b)=>score(b)-score(a)||(a.distKm??99)-(b.distKm??99), price:(a,b)=>(a.askingM??99)-(b.askingM??99), value:(a,b)=>((a.askingM??99)-(a.fairHighM??a.askingM??99))-((b.askingM??99)-(b.fairHighM??b.askingM??99))};
+  const sorters = {dist:(a,b)=>(a.distKm??99)-(b.distKm??99), hearts:(a,b)=>score(b)-score(a)||(a.distKm??99)-(b.distKm??99), price:(a,b)=>(a.askingM??99)-(b.askingM??99), value:(a,b)=>((a.askingM??99)-(a.fairHighM??a.askingM??99))-((b.askingM??99)-(b.fairHighM??b.askingM??99)), school:(a,b)=>tripScore(a)-tripScore(b)||(a.distKm??99)-(b.distKm??99)};
   const q = query.trim().toLowerCase();
   return (q ? units.filter(u => [u.name,u.area,u.mrt,u.format].join(" ").toLowerCase().includes(q)) : units.filter(fn)).sort(sorters[sort] || sorters.dist);
 }
@@ -470,7 +489,7 @@ function viewHomes(){
   const list = homesFiltered(), q = query.trim();
   return `<input class="search" id="q" type="search" placeholder="Search by name, area or MRT" value="${esc(query)}" autocomplete="off" enterkeyhint="search" style="margin-bottom:10px">
     <div class="tool"><div class="scrollx">${FILTERS.map(([k,l,f]) => `<button class="chip f" type="button" data-filter="${k}" aria-pressed="${filter===k}">${esc(l)} ${units.filter(f).length}</button>`).join("")}</div>
-    <label style="font-size:13px;color:var(--muted)">Sort <select id="sort"><option value="dist" ${sort==="dist"?"selected":""}>Closest to Kovan</option><option value="hearts" ${sort==="hearts"?"selected":""}>Most hearts</option><option value="price" ${sort==="price"?"selected":""}>Lowest price</option><option value="value" ${sort==="value"?"selected":""}>Best vs fair value</option></select></label></div>
+    <label style="font-size:13px;color:var(--muted)">Sort <select id="sort"><option value="dist" ${sort==="dist"?"selected":""}>Closest to Kovan</option><option value="hearts" ${sort==="hearts"?"selected":""}>Most hearts</option><option value="price" ${sort==="price"?"selected":""}>Lowest price</option><option value="value" ${sort==="value"?"selected":""}>Best vs fair value</option><option value="school" ${sort==="school"?"selected":""}>Easiest school runs</option></select></label></div>
     <div id="homeList">${homeList(list, q)}</div>`;
 }
 function homeList(list, q){
@@ -484,6 +503,7 @@ function viewCompare(){
     ["Asking", u => money(u.askingM)], ["Fair value", u => fairTxt(u)], ["Format", u => u.format], ["Beds", u => u.beds], ["Size", u => u.sizeSqft ? Number(u.sizeSqft).toLocaleString("en-SG")+" sqft" : "—"],
     ["From Kovan", u => typeof u.distKm==="number" ? u.distKm.toFixed(1)+" km" : "—"], ["MRT", u => (u.mrt||"—") + (u.mrtDist?" · "+u.mrtDist:"")], ["Lease", u => u.lease],
     ...KEYS.map(k => [NAME[k] + " ♥", u => "♥".repeat(ratingOf(u,k)) || "—"]), ["Status", u => STATUS_LABEL[u.status] || u.status],
+    ...places.map(p => [(p.emoji||"") + " " + (p.short||p.label), u => { const t = tripOf(u,p.key); return t ? `≈${t.min} min · ${RATE_LABEL[t.rating]||t.rating}${t.xfers?` · ${t.xfers} change${t.xfers>1?"s":""}`:""}` : "—"; }]),
     ["Loves", u => (u.loves||[]).join(", ") || "—"], ["Concerns", u => autoConcerns(u).concat(u.concerns||[]).join(", ") || "—"]
   ];
   return `<h2 class="sec">Compare <small><button class="ghost" id="clearcmp" type="button">clear</button></small></h2>
@@ -527,6 +547,10 @@ function renderSheet(fresh){
       ${autoConcerns(r).map(t => `<span class="chip concern">${esc(t)}</span>`).join("")}
       ${(r.concerns||[]).map((t,i) => `<span class="chip concern">${esc(t)}<button class="x" type="button" data-untag="concerns" data-i="${i}" aria-label="Remove">×</button></span>`).join("")}</div>
       <form class="addtag" id="tagForm"><input id="tagIn" placeholder="Add a love or concern" maxlength="40" autocomplete="off"><button class="btn sm" type="submit" data-kind="loves">💚 Love</button><button class="btn sm" type="button" id="addConcern">🚩 Concern</button></form></div>
+    ${places.length && r.transit ? `<div class="box"><h4>Getting to school</h4>${places.map(p => { const t = tripOf(r,p.key); if(!t) return ""; return `<div class="route"><div class="hd2"><span class="trip ${esc(t.rating)}"><i></i>${esc(RATE_LABEL[t.rating]||t.rating)}</span>${esc(p.emoji||"")} ${esc(p.short||p.label)}<span class="grow"></span><span>≈${esc(t.min)} min</span></div>
+        ${p.who?`<div class="meta">${esc(p.who)}</div>`:""}<div class="rt">${esc(t.route)}</div>
+        <div class="meta">${t.xfers?esc(t.xfers)+" change"+(t.xfers>1?"s":""):"No changes"} · longest walk ≈${esc(t.walk)} min${typeof r.lat==="number"?` · <a href="${dirUrl(r,p)}" target="_blank" rel="noopener">Directions ↗</a>`:""}</div></div>`; }).join("")}
+        <div class="meta" style="font-size:11.5px;color:var(--muted);margin-top:8px">Estimates for a weekday morning at a child's walking pace, using bus routes and the MRT (North East Line preferred, no LRT). Tap Directions for live times.</div></div>` : ""}
     <div class="box"><h4>Facts</h4><dl class="kv">
       <dt>Format</dt><dd>${esc(r.format||"—")}</dd><dt>Beds</dt><dd>${esc(r.beds||"—")}</dd><dt>Size</dt><dd>${r.sizeSqft?Number(r.sizeSqft).toLocaleString("en-SG")+" sqft":"—"}</dd>
       <dt>From Kovan</dt><dd>${typeof r.distKm==="number"?(r.distEst?"≈":"")+r.distKm+" km":"—"}</dd><dt>MRT</dt><dd>${esc(r.mrt||"—")}${r.mrtDist?" · "+esc(r.mrtDist):""}</dd>
