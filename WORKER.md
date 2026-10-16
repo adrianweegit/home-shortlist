@@ -22,6 +22,15 @@ For every unit you add (and any unit missing `lat`/`transit`):
 Do not write `transit` by hand, and do not change `hs_meta/places`.
 
 ## Fields the app owns
-Also never change `nope`, `prevStatus` or `nopeRejected` (thumbs-down votes).
+Also never change `nope`, `prevStatus` or `nopeRejected` (thumbs-down votes), or `seenBy`
+(who has opened each home).
 A unit with `nopeRejected: true` was turned down by both of them: never re-add
 that listing in a rescan.
+
+## New and Updated badges
+- New units: set `isNew: true` (each person's "New" badge clears when they open it).
+- When a refresh finds a real change on an existing unit (asking price, listing
+  state such as "Possibly sold", or a corrected key fact), also set
+  `updatedAt` to the current UTC time (`YYYY-MM-DDTHH:MM:SSZ`) and `updateNote`
+  to one short plain sentence, e.g. "Asking down from S$2.88M to S$2.75M".
+  Don't set them when nothing meaningful changed (e.g. only checkedAt).
