@@ -198,6 +198,7 @@ table.cmp{border-collapse:collapse;width:100%;min-width:520px;font-size:13px}
 .form .w{grid-column:1/-1}
 .form input,.form select,.form textarea{width:100%;min-width:0;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--bg);font-size:14px;color:var(--ink);font-weight:400}
 .form textarea{min-height:80px;resize:vertical}
+.form input:disabled{opacity:.45;cursor:not-allowed}
 .notes{white-space:pre-wrap;font-size:14px}
 .req{display:flex;gap:8px;align-items:flex-start;font-size:13px;padding:6px 0;border-bottom:1px solid var(--line)}
 .req:last-child{border-bottom:none}
@@ -519,7 +520,7 @@ function renderSheet(fresh){
       <div class="hearts" style="margin-top:12px">${KEYS.map(k => heartsRow(r,k)).join("")}</div></div>
     <div class="box"><h4>Viewing</h4>
       <div class="form"><label>Status<select id="stSel">${STATUSES.map(s => `<option value="${s}" ${s===st?"selected":""}>${esc(STATUS_LABEL[s])}</option>`).join("")}</select></label>
-      <label>Date & time<input id="apptIn" type="datetime-local" value="${esc(r.appt||"")}"></label>
+      <label>Date & time<input id="apptIn" type="datetime-local" value="${esc(r.appt||"")}" ${st==="Booked"?"":"disabled"} title="${st==="Booked"?"":"Set status to Viewing booked to pick a time"}"></label>
       <label class="w">Agent (name & phone)<input id="agentIn" value="${esc(r.agent||"")}" placeholder="e.g. Matthew Tan 8132 8152"></label></div></div>
     <div class="box"><h4>Loves & concerns</h4>
       <div class="chips">${(r.loves||[]).map((t,i) => `<span class="chip love">${esc(t)}<button class="x" type="button" data-untag="loves" data-i="${i}" aria-label="Remove">×</button></span>`).join("")}
@@ -555,8 +556,8 @@ function renderSheet(fresh){
   sc.scrollTop = keep;
   renderMsgs();
   // wire
-  $("stSel").onchange = e => save(r.id, {status:e.target.value, ...(e.target.value === "Unviewed" ? {appt:""} : {})}, e.target.value === "Unviewed" ? "Status updated, viewing date cleared" : "Status updated");
-  $("apptIn").onchange = e => save(r.id, {appt:e.target.value, ...(e.target.value && r.status==="Unviewed" ? {status:"Booked"} : {})}, "Viewing saved");
+  $("stSel").onchange = e => save(r.id, {status:e.target.value, ...(["Unviewed","Rejected"].includes(e.target.value) ? {appt:""} : {})}, "Status updated");
+  $("apptIn").onchange = e => save(r.id, {appt:e.target.value}, "Viewing saved");
   $("agentIn").onchange = e => save(r.id, {agent:e.target.value.trim()}, "Saved");
   const addTag = kindKey => { const v = $("tagIn").value.trim(); if(!v) return; $("tagIn").value = ""; save(r.id, {[kindKey]: FV.arrayUnion(v)}); };
   $("tagForm").onsubmit = ev => { ev.preventDefault(); addTag("loves"); };
