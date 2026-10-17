@@ -91,9 +91,11 @@ const inWin = (w, bk) => typeof w === "string" ? [] : bk.filter(b => b.at.slice(
 const winFull = (w, ins) => typeof w !== "string" && ins.length >= Math.max(1, Math.floor((toMin(w.end) - toMin(w.start)) / VIEW_MIN));
 function clash(id, at){ // warning text for a chosen time, or ""
   if(!at) return "";
+  const it = (B.items || {})[id] || {};
+  const alreadyOurs = it.status === "upcoming" && it.appt === at; // a booking they already have counts as agreed
   const wins = (B.free || []).filter(w => typeof w !== "string");
   const msgs = [];
-  if(wins.length && !wins.some(w => at.slice(0,10) === w.date && toMin(at.slice(11,16)) >= toMin(w.start) && toMin(at.slice(11,16)) + VIEW_MIN <= toMin(w.end) + 0))
+  if(!alreadyOurs && wins.length && !wins.some(w => at.slice(0,10) === w.date && toMin(at.slice(11,16)) >= toMin(w.start) && toMin(at.slice(11,16)) + VIEW_MIN <= toMin(w.end) + 0))
     msgs.push("Outside the times they're free — please check with them first.");
   const t = new Date(at).getTime();
   const near = bookings(id).filter(b => Math.abs(new Date(b.at).getTime() - t) < VIEW_MIN*60000);
@@ -101,10 +103,12 @@ function clash(id, at){ // warning text for a chosen time, or ""
   return msgs.join(" ");
 }
 function availHTML(){
-  const live = (B.free || []).filter(w => !winEnded(w)); if(!live.length) return "";
+  const live = (B.free || []).filter(w => !winEnded(w));
   const bk = bookings(null);
+  const outside = bk.filter(b => new Date(b.at) > new Date() && !live.some(w => inWin(w, [b]).length)).sort((a,b) => a.at.localeCompare(b.at));
+  if(!live.length && !outside.length) return "";
   return `<div class="box"><h4>When they're free</h4><p class="meta" style="margin:0 0 4px">Each viewing is planned as 1 hour, including travel.</p>${live.map(w => { const ins = inWin(w, bk), full = winFull(w, ins);
-    return `<div class="win ${full?"full":""}"><b>${esc(winLabel(w))}</b>${full?` <span class="pill">Fully booked</span>`:""}${ins.length?`<div class="meta">Booked: ${ins.map(b => esc(fmtT(b.at.slice(11,16)) + " " + b.label)).join(" · ")}</div>`:""}</div>`; }).join("")}</div>`;
+    return `<div class="win ${full?"full":""}"><b>${esc(winLabel(w))}</b>${full?` <span class="pill">Fully booked</span>`:""}${ins.length?`<div class="meta">Booked: ${ins.map(b => esc(fmtT(b.at.slice(11,16)) + " " + b.label)).join(" · ")}</div>`:""}</div>`; }).join("")}${outside.length ? `<div class="win"><b>Other confirmed viewings</b><div class="meta">${outside.map(b => esc(fmtWhen(b.at) + " " + b.label)).join(" · ")}</div></div>` : ""}</div>`;
 }
 const token = (location.hash || "").replace(/^#/, "");
 const root = $("root");

@@ -883,12 +883,18 @@ function renderAskSheet(){
     const w = {date:$("slotDate").value, start:$("slotStart").value, end:$("slotEnd").value, note:$("slotNote").value.trim()};
     if(!w.date){ toast("Pick a date"); return; } if(!w.start || !w.end || toMin(w.end) - toMin(w.start) < VIEW_MIN){ toast("End time should be at least an hour after the start"); return; }
     if(winEnded(w)){ toast("That time has already passed"); return; }
-    sheet.free.push(w); sheet.free.sort((a,b) => (typeof a === "string" ? "" : a.date + a.start).localeCompare(typeof b === "string" ? "" : b.date + b.start)); keepScroll(renderAskSheet); };
+    sheet.free.push(w); sheet.free.sort((a,b) => (typeof a === "string" ? "" : a.date + a.start).localeCompare(typeof b === "string" ? "" : b.date + b.start)); keepScroll(renderAskSheet); saveFreeNow(); };
   document.querySelectorAll("[data-asksel]").forEach(cb => cb.onchange = () => { cb.checked ? sheet.sel.add(cb.dataset.asksel) : sheet.sel.delete(cb.dataset.asksel); keepScroll(renderAskSheet); });
-  document.querySelectorAll("[data-rmwin]").forEach(b => b.onclick = () => { sheet.free.splice(+b.dataset.rmwin, 1); keepScroll(renderAskSheet); });
+  document.querySelectorAll("[data-rmwin]").forEach(b => b.onclick = () => { sheet.free.splice(+b.dataset.rmwin, 1); keepScroll(renderAskSheet); saveFreeNow(); });
   $("sendAsk").onclick = sendAsk;
   const cp = $("copyBoard"); if(cp) cp.onclick = async () => { try { await navigator.clipboard.writeText(link); toast("Link copied"); } catch(e){ toast(link); } };
   const rs = $("resetBoard"); if(rs) rs.onclick = () => { if(!sheet.confirmReset){ sheet.confirmReset = true; keepScroll(renderAskSheet); return; } resetBoard(); };
+}
+// Availability changes save straight away (no separate Save tap needed) once the board exists.
+async function saveFreeNow(){
+  if(!agent || !agent.boardToken || !board) return;
+  try { await restPatch("hs_board/" + agent.boardToken, {free: sheet.free.filter(w => !winEnded(w))}); toast("Saved to " + AGENT() + "'s board"); }
+  catch(e){ toast("Couldn't save availability — tap Save availability to retry"); }
 }
 function waOpen(text){ location.href = "https://wa.me/" + String(agent.phone || "").replace(/\D/g, "") + "?text=" + encodeURIComponent(text); }
 async function sendAsk(){
