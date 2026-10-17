@@ -706,13 +706,34 @@ function renderAskSheet(){
   $("sendAsk").onclick = sendAsk;
 }
 function keepScroll(fn){ const sc = $("sheetScroll"), y = sc ? sc.scrollTop : 0; fn(); const s2 = $("sheetScroll"); if(s2) s2.scrollTop = y; }
+function fsEnc(v){
+  if(v && typeof v.toMillis === "function") return {timestampValue: new Date(v.toMillis()).toISOString()};
+  if(v === null || v === undefined) return {nullValue: null};
+  if(typeof v === "boolean") return {booleanValue: v};
+  if(typeof v === "number") return Number.isInteger(v) ? {integerValue: String(v)} : {doubleValue: v};
+  if(typeof v === "string") return {stringValue: v};
+  if(Array.isArray(v)) return {arrayValue: {values: v.map(fsEnc)}};
+  return {mapValue: {fields: Object.fromEntries(Object.entries(v).map(([k, x]) => [k, fsEnc(x)]))}};
+}
+async function saveAskREST(token, doc){
+  const idToken = await auth.currentUser.getIdToken();
+  const url = `https://firestore.googleapis.com/v1/projects/${CFG.firebase.projectId}/databases/(default)/documents/hs_agent/${token}`;
+  const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 15000);
+  try {
+    const r = await fetch(url, {method:"PATCH", signal:ctl.signal, headers:{"Content-Type":"application/json", "Authorization":"Bearer " + idToken},
+      body: JSON.stringify({fields: Object.fromEntries(Object.entries(doc).map(([k, v]) => [k, fsEnc(v)]))})});
+    if(!r.ok) throw new Error("http " + r.status);
+  } finally { clearTimeout(timer); }
+}
 async function sendAsk(){
   const btn = $("sendAsk"); btn.disabled = true; btn.textContent = "Preparing…";
   const homes = [...sheet.sel].map(id => units.find(u => u.id === id)).filter(Boolean).map(u => ({id:u.id, name:u.name||"", area:(u.area||"").split("·")[0].trim(), url:u.url||"", booked:u.status==="Booked" && !!u.appt, appt:u.status==="Booked" ? (u.appt||"") : ""}));
   const token = randToken(32);
   const doc = {createdAt:new Date().toISOString(), expiresAt:firebase.firestore.Timestamp.fromMillis(Date.now() + 14*864e5), by:me.key, from:NAME[me.key], agentName:AGENT(), homes, slots:sheet.slots.map(s => ({label:s.label, date:s.date||"", start:s.start||""})), note:(sheet.note||"").trim()};
-  try { await db.collection("hs_agent").doc(token).set(doc); }
-  catch(e){ toast("Couldn't prepare the request — check your connection"); btn.disabled = false; btn.textContent = "Send on WhatsApp"; return; }
+  // Save over plain HTTPS (with your sign-in token) so it can't hang on a sleepy
+  // database connection in the home-screen app; give up after 15 seconds.
+  try { await saveAskREST(token, doc); }
+  catch(e){ toast("Couldn't prepare the request — check your connection and try again"); btn.disabled = false; btn.textContent = "Send on WhatsApp"; return; }
   const link = location.origin + location.pathname.replace(/[^/]*$/, "") + "agent.html#" + token;
   const toBook = homes.filter(x => !x.booked), toConfirm = homes.filter(x => x.booked);
   const L = [];
