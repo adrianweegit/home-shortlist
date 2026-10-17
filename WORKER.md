@@ -59,3 +59,18 @@ any of these it misses under `concerns` (short tags such as "Under 1,400 sqft").
 
 Format (GF / penthouse / high floor / townhouse) is not a deciding factor, and
 freehold is not a plus on its own. Budget, lease and 6 km rules are unchanged.
+
+## Duplicates and repeats
+- **Same unit, different agent:** before adding any listing, compare it with
+  existing units of the same development. If size matches and the floor/stack,
+  view or facing match (or the price is within ~3% with nothing contradicting),
+  treat it as the SAME unit: do not create a new unit. Instead append
+  `{"url": ..., "askingM": ...}` to that unit's `otherListings` array and
+  mention it in the run summary. If unsure, add it but put "Possible duplicate
+  of <name/listing>" in `concerns`.
+- **Variety in rescans:** "More like Riverfront Residences" means similar
+  developments, not more Riverfront units. Add at most 2 new listings from any
+  one development per rescan, and only if they're clearly different units
+  (different size, or clearly different floor/stack).
+- A pasted link to a development they rejected before is still added (they
+  chose it), with a concern tag noting the earlier rejection.
