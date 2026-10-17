@@ -211,6 +211,9 @@ table.cmp{border-collapse:collapse;width:100%;min-width:520px;font-size:13px}
 .pick input{width:20px;height:20px;accent-color:var(--pandan);flex:0 0 20px}
 .slot{font-size:12.5px;border-radius:10px;border:1px solid var(--line);background:var(--bg);padding:6px 9px}
 .slot[aria-pressed="true"]{background:var(--pandan-soft);border-color:var(--pandan);color:var(--pandan);font-weight:600}
+.win{display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--line);font-size:14px}.win:last-child{border-bottom:none}
+.win.full{opacity:.55}.win .wb{font-size:12.5px;color:var(--muted);margin-top:2px}.win .x{border:none;background:none;font-size:18px;color:var(--muted);padding:0 4px}
+.slotform{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:6px;margin-top:10px}.slotform input{min-width:0;border:1px solid var(--line);border-radius:10px;padding:8px;background:var(--bg);font-size:14px}
 .reply{padding:10px 0;border-bottom:1px solid var(--line);font-size:14px}.reply:last-child{border-bottom:none}
 .msg.shernice{background:var(--rose-soft);align-self:flex-end;border-bottom-right-radius:4px}
 .msg.mine{outline:1px solid var(--line)}
@@ -741,6 +744,8 @@ async function syncBoardFromApp(){
     Object.assign(flat, {[`items.${id}.status`]:d.status, [`items.${id}.appt`]:d.appt, [`items.${id}.closedReason`]:d.closedReason, [`items.${id}.ourOffer`]:off});
     if(notes.length){ flat[`items.${id}.changedAt`] = now; flat[`items.${id}.changeNote`] = notes.join(" · "); }
   });
+  const busy = units.filter(u => u.status === "Booked" && u.appt && !(board.items || {})[u.id]).map(u => ({at:u.appt})).sort((a,b) => a.at.localeCompare(b.at));
+  if(stable(busy) !== stable(board.busy || [])) flat.busy = busy;
   if(!Object.keys(flat).length) return;
   syncing = true;
   try { await restPatch("hs_board/" + agent.boardToken, flat); } catch(e){ console.warn("board sync later:", e.message); }
@@ -801,6 +806,35 @@ const syncAll = () => { applyBoardReplies(); syncBoardFromApp(); };
 document.addEventListener("visibilitychange", () => { if(document.visibilityState === "visible") syncAll(); });
 
 /* Free-time quick picks */
+/* Availability windows: {date:"YYYY-MM-DD", start:"HH:MM", end:"HH:MM", note}. Each viewing
+   takes VIEW_MIN minutes (incl. travel), so a window fits floor(length / VIEW_MIN) viewings. */
+const VIEW_MIN = 60;
+const toMin = t => { const [h, m] = String(t||"0:0").split(":").map(Number); return h*60 + (m||0); };
+const fmtT = t => { let [h, m] = String(t).split(":").map(Number); const ap = h >= 12 ? "pm" : "am"; h = h % 12 || 12; return h + (m ? ":" + String(m).padStart(2,"0") : "") + ap; };
+const fmtDay = d => new Date(d + "T00:00").toLocaleDateString("en-SG",{weekday:"short",day:"numeric",month:"short"});
+const winLabel = w => typeof w === "string" ? w : `${fmtDay(w.date)}, ${fmtT(w.start)}–${fmtT(w.end)}${w.note ? " (" + w.note + ")" : ""}`;
+const winEnded = w => typeof w !== "string" && new Date(w.date + "T" + w.end) < new Date();
+function boardBookings(){ // [{at, label}] — viewings on his board plus our other bookings
+  const out = [];
+  Object.values((board && board.items) || {}).forEach(it => { if(it.status === "upcoming" && it.appt) out.push({at:it.appt, label:it.name}); });
+  ((board && board.busy) || []).forEach(b => out.push({at:b.at, label:"another viewing"}));
+  return out;
+}
+function inWindow(w, bookings){
+  if(typeof w === "string") return [];
+  return bookings.filter(b => b.at.slice(0,10) === w.date && toMin(b.at.slice(11,16)) >= toMin(w.start) && toMin(b.at.slice(11,16)) < toMin(w.end)).sort((a,b) => a.at.localeCompare(b.at));
+}
+const winFull = (w, inside) => typeof w !== "string" && inside.length >= Math.max(1, Math.floor((toMin(w.end) - toMin(w.start)) / VIEW_MIN));
+function availabilityHTML(list, removable){
+  const bk = boardBookings();
+  const live = list.map((w, i) => [w, i]).filter(([w]) => !winEnded(w));
+  if(!live.length) return `<div style="color:var(--muted);font-size:13px">No free times yet.</div>`;
+  return live.map(([w, i]) => { const ins = inWindow(w, bk), full = winFull(w, ins);
+    return `<div class="win ${full?"full":""}"><div class="grow"><b>${esc(winLabel(w))}</b>${full?` <span class="pill st-Rejected">Fully booked</span>`:""}
+      ${ins.length ? `<div class="wb">Booked: ${ins.map(b => esc(fmtT(b.at.slice(11,16)) + " " + b.label)).join(" · ")}</div>` : (typeof w === "string" ? `<div class="wb">Typed earlier — re-add with a date and times so bookings show here</div>` : "")}</div>
+      ${removable ? `<button class="x" type="button" data-rmwin="${i}" aria-label="Remove">×</button>` : ""}</div>`; }).join("");
+}
+
 function quickSlots(){
   const out = [], d0 = new Date(); d0.setHours(0,0,0,0);
   for(let i = 0; i <= 16 && out.length < 12; i++){
@@ -829,24 +863,29 @@ function renderAskSheet(){
       : `<label class="pick"><input type="checkbox" data-asksel="${esc(u.id)}" ${sheet.sel.has(u.id)?"checked":""}><span class="grow"><b>${esc(u.name)}</b><br><span style="color:var(--muted);font-size:12.5px">${esc(money(u.askingM))} · ${esc(STATUS_LABEL[u.status]||"")}</span></span><span style="color:var(--rose);font-weight:700;font-size:13px">♥ ${score(u)}</span></label>`;
   };
   const nNew = [...sheet.sel].filter(id => !onBoard(id) && units.some(u => u.id === id)).length;
-  const freeChanged = JSON.stringify(sheet.free) !== JSON.stringify((board && board.free) || []);
+  const freeChanged = stable(sheet.free) !== stable((board && board.free) || []);
   const link = boardLink();
   $("sheetRoot").innerHTML = `<div class="scrim" id="scrim"></div><div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(AGENT())}'s board">
     <div class="hd"><h3>${esc(AGENT())}'s board</h3><button class="close" id="closeSheet" type="button" aria-label="Close">×</button></div>
     <div class="sc" id="sheetScroll">
       <div class="box"><h4>Homes</h4>${top.map(row).join("")}${others.length?`<details style="margin-top:6px"><summary style="font-size:13px;color:var(--muted);cursor:pointer">Other homes (${others.length})</summary>${others.map(row).join("")}</details>`:""}</div>
-      <div class="box"><h4>When we're free</h4><p style="font-size:12.5px;color:var(--muted);margin:0 0 8px">Always shown at the top of ${esc(AGENT())}'s board. Keep it up to date here.</p>
-        <div class="chips">${sheet.free.map(s => `<span class="chip">${esc(s)}<button class="x" type="button" data-rmslot="${esc(s)}" aria-label="Remove">×</button></span>`).join("")}</div>
-        <form class="addtag" id="slotForm"><input id="slotIn" placeholder="e.g. Sat 25 Oct 10am–1pm" maxlength="60" autocomplete="off"><button class="btn sm" type="submit">Add</button></form></div>
-      <button class="btn primary" type="button" id="sendAsk" style="width:100%;justify-content:center;padding:12px;margin-top:12px" ${nNew || freeChanged ? "" : "disabled"}>${nNew ? `Add ${nNew} home${nNew>1?"s":""} & send on WhatsApp` : "Save free times"}</button>
+      <div class="box"><h4>Our availability</h4><p style="font-size:12.5px;color:var(--muted);margin:0 0 4px">Shown at the top of ${esc(AGENT())}'s board, with viewings already booked in each window (1 hour each). Past times drop off by themselves.</p>
+        ${availabilityHTML(sheet.free, true)}
+        <form id="slotForm"><div class="slotform" style="font-size:11.5px;color:var(--muted);font-weight:600;margin-bottom:-4px"><span>Date</span><span>From</span><span>To</span></div><div class="slotform"><input id="slotDate" type="date" min="${ymd(new Date())}" aria-label="Date"><input id="slotStart" type="time" value="10:00" step="900" aria-label="From"><input id="slotEnd" type="time" value="13:00" step="900" aria-label="To"></div>
+          <div class="addtag"><input id="slotNote" placeholder="Note (optional), e.g. Shernice can't join" maxlength="40" autocomplete="off"><button class="btn sm" type="submit">Add</button></div></form></div>
+      <button class="btn primary" type="button" id="sendAsk" style="width:100%;justify-content:center;padding:12px;margin-top:12px" ${nNew || freeChanged ? "" : "disabled"}>${nNew ? `Add ${nNew} home${nNew>1?"s":""} & send on WhatsApp` : "Save availability"}</button>
       <p style="font-size:12px;color:var(--muted);margin:8px 2px 0">${nNew ? `WhatsApp opens with a short message for ${esc(AGENT())} listing the new homes and his board link.` : `Time changes and updates reach ${esc(AGENT())}'s board quietly — he sees what changed next time he opens it.`} He only sees the homes on his board, their listing links, your free times and offers you make.</p>
       ${link ? `<div class="box"><h4>His board link</h4><div class="chips"><button class="btn sm" type="button" id="copyBoard">Copy link</button><a class="btn sm" href="${esc(link)}" target="_blank" rel="noopener">Open as ${esc(AGENT())} ↗</a><button class="btn sm danger" type="button" id="resetBoard">${sheet.confirmReset ? "Tap again to reset" : "Reset link"}</button></div>
         <p style="font-size:12px;color:var(--muted);margin:8px 0 0">Reset if the link is ever shared by mistake: the old link stops working and WhatsApp opens with the new one.</p></div>` : ""}
     </div></div>`;
   $("scrim").onclick = closeSheet; $("closeSheet").onclick = closeSheet;
-  $("slotForm").onsubmit = ev => { ev.preventDefault(); const v = $("slotIn").value.trim(); if(!v) return; if(!sheet.free.includes(v)) sheet.free.push(v); keepScroll(renderAskSheet); };
+  $("slotForm").onsubmit = ev => { ev.preventDefault();
+    const w = {date:$("slotDate").value, start:$("slotStart").value, end:$("slotEnd").value, note:$("slotNote").value.trim()};
+    if(!w.date){ toast("Pick a date"); return; } if(!w.start || !w.end || toMin(w.end) - toMin(w.start) < VIEW_MIN){ toast("End time should be at least an hour after the start"); return; }
+    if(winEnded(w)){ toast("That time has already passed"); return; }
+    sheet.free.push(w); sheet.free.sort((a,b) => (typeof a === "string" ? "" : a.date + a.start).localeCompare(typeof b === "string" ? "" : b.date + b.start)); keepScroll(renderAskSheet); };
   document.querySelectorAll("[data-asksel]").forEach(cb => cb.onchange = () => { cb.checked ? sheet.sel.add(cb.dataset.asksel) : sheet.sel.delete(cb.dataset.asksel); keepScroll(renderAskSheet); });
-  document.querySelectorAll("[data-rmslot]").forEach(b => b.onclick = () => { sheet.free = sheet.free.filter(s => s !== b.dataset.rmslot); keepScroll(renderAskSheet); });
+  document.querySelectorAll("[data-rmwin]").forEach(b => b.onclick = () => { sheet.free.splice(+b.dataset.rmwin, 1); keepScroll(renderAskSheet); });
   $("sendAsk").onclick = sendAsk;
   const cp = $("copyBoard"); if(cp) cp.onclick = async () => { try { await navigator.clipboard.writeText(link); toast("Link copied"); } catch(e){ toast(link); } };
   const rs = $("resetBoard"); if(rs) rs.onclick = () => { if(!sheet.confirmReset){ sheet.confirmReset = true; keepScroll(renderAskSheet); return; } resetBoard(); };
@@ -858,18 +897,18 @@ async function sendAsk(){
   try {
     const firstTime = !(agent && agent.boardToken && board);
     const token = await ensureBoard();
-    const now = new Date().toISOString(), flat = {free: sheet.free.slice()};
+    const now = new Date().toISOString(), flat = {free: sheet.free.filter(w => !winEnded(w))};
     add.forEach(u => {
       const d = deriveItem(u);
       flat[`items.${u.id}`] = {name:u.name||"", area:(u.area||"").split("·")[0].trim(), url:u.url||"", addedAt:now, status:d.status, appt:d.appt, closedReason:"", ourOffer:null, changedAt:now, changeNote:"New — added by " + NAME[me.key]};
     });
     await restPatch("hs_board/" + token, flat);
-    if(!add.length){ toast("Free times saved to " + AGENT() + "'s board"); closeSheet(); return; }
+    if(!add.length){ toast("Availability saved to " + AGENT() + "'s board"); closeSheet(); return; }
     const L = [`Hi ${AGENT()}, it's ${NAME[me.key]} here 🙂`, ""];
     L.push(firstTime ? `Shernice and I have set up a board for you with the homes we're interested in. You can confirm viewing times, share your views and suggest other units there – it updates our list directly:` : `We've added ${add.length > 1 ? add.length + " homes" : "a home"} to your board:`);
     if(firstTime){ L.push(boardLink(), ""); L.push("Homes on it:"); }
     add.forEach((u,i) => L.push(`${i+1}. ${u.name}${u.url ? "\n   " + u.url : ""}`));
-    if(sheet.free.length){ L.push("", "We're free:"); sheet.free.forEach(s => L.push("• " + s)); }
+    const fr = sheet.free.filter(w => !winEnded(w)); if(fr.length){ L.push("", "We're free (also on your board, with what's already booked):"); fr.forEach(w => L.push("• " + winLabel(w))); }
     if(!firstTime) L.push("", "Your board:", boardLink());
     L.push("", "Thanks!");
     closeSheet(); waOpen(L.join("\n"));

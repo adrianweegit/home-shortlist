@@ -33,6 +33,8 @@ h2.sec small{font:500 13px var(--fb);color:var(--muted)}
 .news{background:var(--kaya-soft);border-radius:14px;padding:12px 14px;margin-top:12px}
 .news ul{margin:6px 0 0;padding-left:18px}
 a{color:var(--pandan)}
+.win{padding:8px 0;border-bottom:1px solid var(--line);font-size:14.5px}.win:last-child{border-bottom:none}.win.full{opacity:.5}
+.warn{color:#A06A00;background:var(--kaya-soft);border-radius:8px;padding:6px 9px;font-size:12.5px;font-weight:600;margin-top:6px}
 .slots{display:flex;flex-wrap:wrap;gap:6px}
 .slot{font-size:13px;border-radius:999px;background:var(--pandan-soft);color:var(--pandan);padding:4px 10px;font-weight:600}
 .opts{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px}
@@ -69,6 +71,41 @@ const fmtWhen = s => { if(!s) return ""; const d = new Date(s); return isNaN(d) 
 const fmtM = m => typeof m === "number" ? "S$" + Math.round(m*1e6).toLocaleString("en-SG") : "";
 function parseMoney(s){ const t = String(s||"").replace(/[S$,\s]/gi, "").toLowerCase(); if(!t) return null; let n = parseFloat(t); if(isNaN(n)) return null;
   if(/k$/.test(t)) n /= 1000; else if(!/m$/.test(t) && n > 1000) n /= 1e6; return Math.round(n*1e4)/1e4; }
+const VIEW_MIN = 60;
+const toMin = t => { const [hh, mm] = String(t||"0:0").split(":").map(Number); return hh*60 + (mm||0); };
+const fmtT = t => { let [hh, mm] = String(t).split(":").map(Number); const ap = hh >= 12 ? "pm" : "am"; hh = hh % 12 || 12; return hh + (mm ? ":" + String(mm).padStart(2,"0") : "") + ap; };
+const fmtDay = d => new Date(d + "T00:00").toLocaleDateString("en-SG",{weekday:"short",day:"numeric",month:"short"});
+const winLabel = w => typeof w === "string" ? w : `${fmtDay(w.date)}, ${fmtT(w.start)}–${fmtT(w.end)}${w.note ? " (" + w.note + ")" : ""}`;
+const winEnded = w => typeof w !== "string" && new Date(w.date + "T" + w.end) < new Date();
+function bookings(exceptId){ // viewings on the board (using his unsaved edits) + their other bookings
+  const out = [];
+  Object.entries(B.items || {}).forEach(([id, it]) => {
+    if(id === exceptId || it.status === "closed") return;
+    const s = state[id], at = s && s.state === "confirmed" && s.appt ? s.appt : (it.status === "upcoming" ? it.appt : "");
+    if(at) out.push({at, label: it.name});
+  });
+  (B.busy || []).forEach(b => out.push({at: b.at, label: "another viewing"}));
+  return out;
+}
+const inWin = (w, bk) => typeof w === "string" ? [] : bk.filter(b => b.at.slice(0,10) === w.date && toMin(b.at.slice(11,16)) >= toMin(w.start) && toMin(b.at.slice(11,16)) < toMin(w.end)).sort((a,b) => a.at.localeCompare(b.at));
+const winFull = (w, ins) => typeof w !== "string" && ins.length >= Math.max(1, Math.floor((toMin(w.end) - toMin(w.start)) / VIEW_MIN));
+function clash(id, at){ // warning text for a chosen time, or ""
+  if(!at) return "";
+  const wins = (B.free || []).filter(w => typeof w !== "string");
+  const msgs = [];
+  if(wins.length && !wins.some(w => at.slice(0,10) === w.date && toMin(at.slice(11,16)) >= toMin(w.start) && toMin(at.slice(11,16)) + VIEW_MIN <= toMin(w.end) + 0))
+    msgs.push("Outside the times they're free — please check with them first.");
+  const t = new Date(at).getTime();
+  const near = bookings(id).filter(b => Math.abs(new Date(b.at).getTime() - t) < VIEW_MIN*60000);
+  if(near.length) msgs.push("Within an hour of " + near.map(b => b.label + " at " + fmtT(b.at.slice(11,16))).join(", ") + ".");
+  return msgs.join(" ");
+}
+function availHTML(){
+  const live = (B.free || []).filter(w => !winEnded(w)); if(!live.length) return "";
+  const bk = bookings(null);
+  return `<div class="box"><h4>When they're free</h4><p class="meta" style="margin:0 0 4px">Each viewing is planned as 1 hour, including travel.</p>${live.map(w => { const ins = inWin(w, bk), full = winFull(w, ins);
+    return `<div class="win ${full?"full":""}"><b>${esc(winLabel(w))}</b>${full?` <span class="pill">Fully booked</span>`:""}${ins.length?`<div class="meta">Booked: ${ins.map(b => esc(fmtT(b.at.slice(11,16)) + " " + b.label)).join(" · ")}</div>`:""}</div>`; }).join("")}</div>`;
+}
 const token = (location.hash || "").replace(/^#/, "");
 const root = $("root");
 if(!/^[A-Za-z0-9]{24,}$/.test(token)){ root.innerHTML = `<h1>Link not recognised</h1><p class="sub">Please use the full link from the WhatsApp message.</p>`; return; }
@@ -124,7 +161,7 @@ function card(id, it){
     ${ch && it.changeNote ? `<div class="chg">🔔 ${esc(it.changeNote)}</div>` : ""}
     ${it.status === "offer" || it.ourOffer ? offerBlock(id, it) : ""}
     ${live && it.status !== "offer" ? `<div class="opts">${STATES.map(([k,l]) => `<button class="opt" type="button" data-h="${esc(id)}" data-st="${k}" aria-pressed="${st.state===k}">${l}</button>`).join("")}</div>
-      <div ${st.state==="confirmed"?"":"hidden"}><label>Viewing date &amp; time<div class="dt ${st.appt?"":"empty"}"><span>${st.appt?esc(fmtWhen(st.appt)):"Tap to set date &amp; time"}</span><input type="datetime-local" data-appt="${esc(id)}" value="${esc(st.appt)}"></div></label></div>` : ""}
+      <div ${st.state==="confirmed"?"":"hidden"}><label>Viewing date &amp; time<div class="dt ${st.appt?"":"empty"}"><span>${st.appt?esc(fmtWhen(st.appt)):"Tap to set date &amp; time"}</span><input type="datetime-local" data-appt="${esc(id)}" value="${esc(st.appt)}"></div></label><div class="warn" data-warn="${esc(id)}" ${st.state==="confirmed"&&clash(id, st.appt)?"":"hidden"}>⚠️ ${esc(clash(id, st.appt))}</div></div>` : ""}
     ${live ? `<label>Your view on this home (optional)<textarea data-view="${esc(id)}" maxlength="800" placeholder="Condition, seller's flexibility, pros and cons…">${esc(st.view)}</textarea></label>` : (st.view ? `<div class="meta" style="margin-top:8px">Your view: “${esc(st.view)}”</div>` : "")}
   </div>`;
 }
@@ -142,7 +179,7 @@ function render(){
   const from = B.from || "Adrian";
   let h = `<h1>Hi ${esc(B.agentName || "")} 👋</h1><p class="sub">${esc(from)} &amp; Shernice's viewing board. Update times, offers and your views here any time — it goes straight to them. Bookmark this page.</p>`;
   if(lastSeen && changed.length) h += `<div class="news"><b>Since your last visit</b><ul>${changed.map(([id, it]) => `<li><a href="#h-${esc(id)}" data-jump="${esc(id)}">${esc(it.name)}</a>: ${esc(it.changeNote||"updated")}</li>`).join("")}</ul></div>`;
-  if((B.free||[]).length) h += `<div class="box"><h4>When they're free</h4><div class="slots">${B.free.map(s => `<span class="slot">${esc(s)}</span>`).join("")}</div></div>`;
+  h += `<div id="avail">${availHTML()}</div>`;
   SECTIONS.forEach(([k, title, hint]) => {
     const list = items.filter(([, it]) => it.status === k).sort((a,b) => (a[1].appt||"").localeCompare(b[1].appt||"") || a[1].name.localeCompare(b[1].name));
     if(!list.length) return;
@@ -156,12 +193,16 @@ function render(){
     <h2 class="sec">Note for them <small>optional</small></h2><div class="box"><textarea id="note" maxlength="800" placeholder="Anything else">${esc(B.agentNote||"")}</textarea></div>`;
   root.innerHTML = h;
   root.querySelectorAll("[data-st]").forEach(b => b.onclick = () => { state[b.dataset.h].state = b.dataset.st; touch(); const y = scrollY; render(); scrollTo(0, y); });
-  root.querySelectorAll("[data-appt]").forEach(i => i.onchange = () => { state[i.dataset.appt].appt = i.value; touch(); const box = i.parentElement; box.classList.toggle("empty", !i.value); box.querySelector("span").textContent = i.value ? fmtWhen(i.value) : "Tap to set date & time"; });
+  root.querySelectorAll("[data-appt]").forEach(i => i.onchange = () => { state[i.dataset.appt].appt = i.value; touch(); const box = i.parentElement; box.classList.toggle("empty", !i.value); box.querySelector("span").textContent = i.value ? fmtWhen(i.value) : "Tap to set date & time"; refreshWarnings(); });
   root.querySelectorAll("[data-view]").forEach(t => t.oninput = () => { state[t.dataset.view].view = t.value; touch(); });
   root.querySelectorAll("[data-counter]").forEach(t => t.oninput = () => { const id = t.dataset.counter; const m = parseMoney(t.value); state[id].counter = Object.assign({}, state[id].counter, {amountM: m}); touch(); });
   root.querySelectorAll("[data-cnote]").forEach(t => t.oninput = () => { const id = t.dataset.cnote; state[id].counter = Object.assign({}, state[id].counter, {note: t.value}); touch(); });
   ["sgUrl","sgNote"].forEach(k => { $(k).oninput = () => { suggestDraft[k === "sgUrl" ? "url" : "note"] = $(k).value; touch(); }; });
   $("note").oninput = () => { B.agentNote = $("note").value; touch(); };
+}
+function refreshWarnings(){
+  root.querySelectorAll("[data-warn]").forEach(el => { const id = el.dataset.warn, s = state[id], msg = s.state === "confirmed" ? clash(id, s.appt) : ""; el.hidden = !msg; el.textContent = "⚠️ " + msg; });
+  const a = $("avail"); if(a) a.innerHTML = availHTML();
 }
 function touch(){ dirty = true; $("send").disabled = false; $("msg").textContent = ""; }
 $("send").onclick = async () => {
