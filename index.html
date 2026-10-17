@@ -141,7 +141,13 @@ h2.sec small{font:500 13px var(--f-body);color:var(--muted)}
 .rlist{background:var(--paper);border-radius:16px;box-shadow:var(--shadow);padding:2px 12px}
 .rrow{display:flex;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}.rrow:last-child{border-bottom:none}
 .rrow [data-open]{cursor:pointer;min-width:0}.rrow b{font-family:var(--f-display);font-size:15.5px}.rrow .rs{font-size:12.5px;color:var(--muted);margin-top:1px}
+.rthumb{flex:0 0 56px;width:56px;height:56px;border-radius:12px;object-fit:cover;cursor:pointer;font-size:17px!important}
 .rrow .tbtn{font-size:20px;opacity:.5;filter:grayscale(1)}
+.photo{position:relative;height:150px;background:var(--line);overflow:hidden}
+.photo img{width:100%;height:100%;object-fit:cover;display:block}
+.photo.big{height:200px;border-radius:16px;margin:0 0 4px}
+.photo .pnote{position:absolute;left:8px;bottom:8px;background:rgba(0,0,0,.6);color:#fff;font-size:11px;font-weight:600;border-radius:6px;padding:2px 7px}
+.devtile{color:#fff;font:800 22px var(--f-display);letter-spacing:.02em}
 .lastc{font-size:13px;background:var(--bg);border-radius:12px;padding:8px 10px}
 .lastc b{font-weight:700}
 .cmp-on{background:var(--kaya-soft);border-color:var(--kaya)}
@@ -427,6 +433,21 @@ function bar(r){
   return `<div><div class="bar">${typeof lo==="number"?`<span class="band" style="left:${pct(lo)};width:calc(${pct(hi)} - ${pct(lo)})"></span>`:""}<span class="bud" style="left:${pct(CFG.budgetM)}" title="Budget"></span><span class="mk" style="left:calc(${pct(r.askingM)} - 2px)" title="Asking"></span></div>
     <div class="barlbl"><span>▮ asking${typeof lo==="number"?" · ▭ fair value":""}</span><span style="color:var(--rose)">┆ budget S$${CFG.budgetM}M</span></div></div>`;
 }
+// Listing photo across the top of a card. If the site blocks it, the banner removes
+// itself and the card falls back to its tile. Homes without a photo get a coloured
+// tile with the development's initials (same colour for every unit in a development).
+const DEV_COLOURS = ["#3F7D4E","#B5651D","#4F7BB5","#9B4F96","#C0843A","#2E8B8B","#B5485F","#6B7A2E"];
+function devTile(r){
+  const name = (r.name || "?").replace(/\(.*?\)/g, "").replace(/^the\s+/i, "").trim();
+  const words = name.split(/[\s@&-]+/).filter(Boolean);
+  const ini = (words.length > 1 ? words[0][0] + words[1][0] : name.slice(0,2)).toUpperCase();
+  let hsh = 0; for(const c of name.toLowerCase()) hsh = (hsh*31 + c.charCodeAt(0)) >>> 0;
+  return `<div class="pic devtile" style="background:${DEV_COLOURS[hsh % DEV_COLOURS.length]}">${esc(ini)}</div>`;
+}
+function photoBanner(r, big){
+  if(!r.photoUrl) return "";
+  return `<div class="photo ${big?"big":""}"><img src="${esc(r.photoUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentElement.remove()">${r.photoNote?`<span class="pnote">${esc(r.photoNote)}</span>`:""}</div>`;
+}
 function card(r){
   const k = kind(r);
   const st = STATUSES.includes(r.status) ? r.status : "Unviewed";
@@ -435,7 +456,8 @@ function card(r){
   const inCmp = compare.includes(r.id);
   const lc = r.lastComment;
   return `<article class="card ${st==="Rejected"?"rej":""}">
-    <div class="hero"><div class="pic ${k}">${pic(k)}</div><div class="ttl">
+    ${photoBanner(r)}
+    <div class="hero">${r.photoUrl ? `<div class="pic ${k}">${pic(k)}</div>` : devTile(r)}<div class="ttl">
       <h3>${esc(r.name)}</h3><div class="sub">${esc(r.area||"")}</div>${r.isNew && !isNewFor(r,me.key) && isNewFor(r,partnerOf(me.key)) && r.status!=="Rejected" ? `<div class="hint">👀 ${esc(NAME[partnerOf(me.key)])} hasn't looked yet</div>` : ""}${updatedFor(r,me.key)&&r.updateNote?`<div class="hint upd">↻ ${esc(r.updateNote)}</div>`:""}
       <div class="row"><span class="dist">${typeof r.distKm==="number"?(r.distEst?"≈":"")+r.distKm.toFixed(r.distKm<1?2:1)+" km":"—"} from Kovan</span><span class="pill st-${st}">${esc(STATUS_LABEL[st])}</span>${isNewFor(r,me.key)?`<span class="pill new">New</span>`:updatedFor(r,me.key)?`<span class="pill upd" title="${esc(r.updateNote||"")}">Updated</span>`:""}${r.listingState&&r.listingState!=="Live"?`<span class="pill st-Booked">${esc(r.listingState)}</span>`:""}</div>
     </div></div>
@@ -470,7 +492,7 @@ function reviewRow(u){
   const dots = places.map(p => { const t = tripOf(u, p.key); return t ? `<span class="trip ${esc(t.rating)}" style="padding:2px 7px;font-size:11.5px"><i></i>${esc(p.short||p.label)} ${esc(t.min)}m</span>` : ""; }).join("");
   const sub = [money(u.askingM), u.sizeSqft ? Number(u.sizeSqft).toLocaleString("en-SG") + " sqft" : "", (u.format||"").split(/[,(;]/)[0].trim()].filter(Boolean).join(" · ");
   const why = upd ? `<span style="color:var(--sky);font-weight:600">↻ ${esc(u.updateNote || "Updated")}</span>` : esc(originOf(u));
-  return `<div class="rrow"><div class="grow" data-open="${esc(u.id)}" role="button" tabindex="0">
+  return `<div class="rrow">${u.photoUrl ? `<img class="rthumb" src="${esc(u.photoUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-open="${esc(u.id)}" onerror="this.remove()">` : devTile(u).replace('class="pic devtile"','class="pic devtile rthumb" data-open="'+esc(u.id)+'"')}<div class="grow" data-open="${esc(u.id)}" role="button" tabindex="0">
       <div><b>${esc(u.name)}</b> <span class="pill ${upd?"upd":"new"}">${upd?"Updated":"New"}</span></div>
       <div class="rs">${esc(sub)}</div>${why ? `<div class="rs">${why}</div>` : ""}${dots ? `<div class="trips" style="margin-top:4px;gap:4px">${dots}</div>` : ""}</div>
     <button class="tbtn" type="button" data-nope="${esc(u.id)}" aria-label="Not for us" title="Not for us">👎</button></div>`;
@@ -597,6 +619,7 @@ function renderSheet(fresh){
   const st = STATUSES.includes(r.status) ? r.status : "Unviewed";
   const editing = sheet.edit;
   const inner = `
+    ${photoBanner(r, true)}
     ${sheet.wasUpdated ? `<div class="box" style="background:var(--sky-soft)"><b style="color:var(--sky)">↻ Updated since you last looked:</b> ${esc(sheet.wasUpdated)}</div>` : ""}
     <div class="box"><div class="money"><span class="ask ${r.askingM>CFG.budgetM?"over":""}">${esc(money(r.askingM))}</span><span class="fair">fair ${esc(fairTxt(r))}</span></div>
       ${r.askingNote?`<div style="font-size:12.5px;color:var(--muted);margin-top:4px">${esc(r.askingNote)}</div>`:""}

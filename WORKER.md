@@ -86,3 +86,12 @@ On every unit you create, also set:
 - `source`: "scan" (rescan find), "link" (a pasted link) or "agent" (request has `suggestedBy`)
 - `addedBy`: the request's `by` ("adrian" / "shernice") for pasted links
 The app uses these for its "New for you to review" list (newest first, with "From Claude's scan" / "Added by Shernice" / "Suggested by Andrew").
+
+## Listing photo
+For every unit you add (or any active unit missing `photoUrl`), set `photoUrl` to the
+listing page's og:image (the main photo; on PropertyGuru it looks like
+https://sg1-cdn.pgimgs.com/listing/<id>/UPHO.<n>.V550.jpg). Only use a URL the page
+actually contains; skip floor plans, logos and agent photos. If it's a generic
+development photo or an AI/artist impression, also set `photoNote`
+("Development photo, not this unit" / "AI-generated concept image (per listing)").
+If you can't get one, leave it unset — the app shows a coloured tile instead.
