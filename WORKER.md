@@ -88,10 +88,12 @@ On every unit you create, also set:
 The app uses these for its "New for you to review" list (newest first, with "From Claude's scan" / "Added by Shernice" / "Suggested by Andrew").
 
 ## Listing photo
-For every unit you add (or any active unit missing `photoUrl`), set `photoUrl` to the
-listing page's og:image (the main photo; on PropertyGuru it looks like
-https://sg1-cdn.pgimgs.com/listing/<id>/UPHO.<n>.V550.jpg). Only use a URL the page
-actually contains; skip floor plans, logos and agent photos. If it's a generic
-development photo or an AI/artist impression, also set `photoNote`
-("Development photo, not this unit" / "AI-generated concept image (per listing)").
-If you can't get one, leave it unset — the app shows a coloured tile instead.
+For every unit you add (or any active unit missing `photoUrl`), set `photoUrl` to a photo
+of the UNIT itself. On PropertyGuru, list the gallery photos with their alt-text labels
+and pick, in order of preference: Living Room → Dining → Balcony/Patio/View → Bedroom →
+Kitchen/Study. Only use URLs under /listing/<thatListingId>/UPHO. — never
+/projectnet-project/ (developer stock images of the condo) or floor plans (ZUFP).
+If the photos have no labels, use the first /listing/<id>/UPHO. photo and set
+`photoNote` "Photo may not be of this unit"; if the listing says its images are AI /
+artist impressions, set `photoNote` "AI-generated impression (per listing)".
+If there are only development photos, leave `photoUrl` unset — the app shows a coloured tile.
