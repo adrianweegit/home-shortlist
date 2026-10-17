@@ -828,7 +828,6 @@ function renderAskSheet(){
     return it ? `<div class="pick"><span style="width:20px;text-align:center">✓</span><span class="grow"><b>${esc(u.name)}</b><br><span style="color:var(--muted);font-size:12.5px">On ${esc(AGENT())}'s board · ${esc(SECTION[it.status]||"")}</span></span><span style="color:var(--rose);font-weight:700;font-size:13px">♥ ${score(u)}</span></div>`
       : `<label class="pick"><input type="checkbox" data-asksel="${esc(u.id)}" ${sheet.sel.has(u.id)?"checked":""}><span class="grow"><b>${esc(u.name)}</b><br><span style="color:var(--muted);font-size:12.5px">${esc(money(u.askingM))} · ${esc(STATUS_LABEL[u.status]||"")}</span></span><span style="color:var(--rose);font-weight:700;font-size:13px">♥ ${score(u)}</span></label>`;
   };
-  const qs = quickSlots(), chosen = new Set(sheet.free);
   const nNew = [...sheet.sel].filter(id => !onBoard(id) && units.some(u => u.id === id)).length;
   const freeChanged = JSON.stringify(sheet.free) !== JSON.stringify((board && board.free) || []);
   const link = boardLink();
@@ -837,9 +836,8 @@ function renderAskSheet(){
     <div class="sc" id="sheetScroll">
       <div class="box"><h4>Homes</h4>${top.map(row).join("")}${others.length?`<details style="margin-top:6px"><summary style="font-size:13px;color:var(--muted);cursor:pointer">Other homes (${others.length})</summary>${others.map(row).join("")}</details>`:""}</div>
       <div class="box"><h4>When we're free</h4><p style="font-size:12.5px;color:var(--muted);margin:0 0 8px">Always shown at the top of ${esc(AGENT())}'s board. Keep it up to date here.</p>
-        <div class="chips">${qs.map((s,i) => `<button class="slot" type="button" data-qslot="${i}" aria-pressed="${chosen.has(s)}">${esc(s)}</button>`).join("")}</div>
-        <div class="chips" style="margin-top:8px">${sheet.free.filter(s => !qs.includes(s)).map(s => `<span class="chip">${esc(s)}<button class="x" type="button" data-rmslot="${esc(s)}" aria-label="Remove">×</button></span>`).join("")}</div>
-        <form class="addtag" id="slotForm"><input id="slotIn" placeholder="Or type your own, e.g. Tue 21 Oct after 7pm" maxlength="60" autocomplete="off"><button class="btn sm" type="submit">Add</button></form></div>
+        <div class="chips">${sheet.free.map(s => `<span class="chip">${esc(s)}<button class="x" type="button" data-rmslot="${esc(s)}" aria-label="Remove">×</button></span>`).join("")}</div>
+        <form class="addtag" id="slotForm"><input id="slotIn" placeholder="e.g. Sat 25 Oct 10am–1pm" maxlength="60" autocomplete="off"><button class="btn sm" type="submit">Add</button></form></div>
       <button class="btn primary" type="button" id="sendAsk" style="width:100%;justify-content:center;padding:12px;margin-top:12px" ${nNew || freeChanged ? "" : "disabled"}>${nNew ? `Add ${nNew} home${nNew>1?"s":""} & send on WhatsApp` : "Save free times"}</button>
       <p style="font-size:12px;color:var(--muted);margin:8px 2px 0">${nNew ? `WhatsApp opens with a short message for ${esc(AGENT())} listing the new homes and his board link.` : `Time changes and updates reach ${esc(AGENT())}'s board quietly — he sees what changed next time he opens it.`} He only sees the homes on his board, their listing links, your free times and offers you make.</p>
       ${link ? `<div class="box"><h4>His board link</h4><div class="chips"><button class="btn sm" type="button" id="copyBoard">Copy link</button><a class="btn sm" href="${esc(link)}" target="_blank" rel="noopener">Open as ${esc(AGENT())} ↗</a><button class="btn sm danger" type="button" id="resetBoard">${sheet.confirmReset ? "Tap again to reset" : "Reset link"}</button></div>
@@ -848,7 +846,6 @@ function renderAskSheet(){
   $("scrim").onclick = closeSheet; $("closeSheet").onclick = closeSheet;
   $("slotForm").onsubmit = ev => { ev.preventDefault(); const v = $("slotIn").value.trim(); if(!v) return; if(!sheet.free.includes(v)) sheet.free.push(v); keepScroll(renderAskSheet); };
   document.querySelectorAll("[data-asksel]").forEach(cb => cb.onchange = () => { cb.checked ? sheet.sel.add(cb.dataset.asksel) : sheet.sel.delete(cb.dataset.asksel); keepScroll(renderAskSheet); });
-  document.querySelectorAll("[data-qslot]").forEach(b => b.onclick = () => { const s = qs[+b.dataset.qslot]; const i = sheet.free.indexOf(s); i >= 0 ? sheet.free.splice(i,1) : sheet.free.push(s); keepScroll(renderAskSheet); });
   document.querySelectorAll("[data-rmslot]").forEach(b => b.onclick = () => { sheet.free = sheet.free.filter(s => s !== b.dataset.rmslot); keepScroll(renderAskSheet); });
   $("sendAsk").onclick = sendAsk;
   const cp = $("copyBoard"); if(cp) cp.onclick = async () => { try { await navigator.clipboard.writeText(link); toast("Link copied"); } catch(e){ toast(link); } };
