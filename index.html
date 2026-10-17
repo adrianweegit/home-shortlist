@@ -885,52 +885,82 @@ async function syncBoardFromApp(){
 /* Board -> app: apply Andrew's replies, counter-offers and suggestions, once, atomically. */
 const RSTATE = {confirmed:"✅ Confirmed", pending:"⏳ Still checking", sold:"🏷️ Sold / withdrawn"};
 let applyingBoard = false;
-async function applyBoardReplies(){
-  if(!board || !unitsLoaded || applyingBoard || !agent || !agent.boardToken) return;
-  const pendingReplies = stable(board.replies || {}) !== stable(board.appliedReplies || {});
-  const pendingSugg = (board.suggestions || []).length > (board.appliedSuggestions || 0);
-  if(!pendingReplies && !pendingSugg) return;
-  applyingBoard = true;
-  const ref = db.collection("hs_board").doc(agent.boardToken);
+/* Andrew's replies -> our homes. Uses REST (the SDK transaction could hang in the
+   home-screen app and never finish). One atomic commit; the board write carries an
+   updateTime precondition, so if he saves again meanwhile nothing is applied twice. */
+function fsDec(v){
+  if(!v) return null;
+  if("stringValue" in v) return v.stringValue;
+  if("integerValue" in v) return Number(v.integerValue);
+  if("doubleValue" in v) return v.doubleValue;
+  if("booleanValue" in v) return v.booleanValue;
+  if("nullValue" in v) return null;
+  if("timestampValue" in v) return v.timestampValue;
+  if("arrayValue" in v) return (v.arrayValue.values || []).map(fsDec);
+  if("mapValue" in v) return Object.fromEntries(Object.entries(v.mapValue.fields || {}).map(([k, x]) => [k, fsDec(x)]));
+  return null;
+}
+const FS_DOCS = () => `projects/${CFG.firebase.projectId}/databases/(default)/documents`;
+async function restCall(method, path, body){
+  const idToken = await auth.currentUser.getIdToken();
+  const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 15000);
   try {
-    await db.runTransaction(async tx => {
-      const s = await tx.get(ref); const d = s.data() || {};
-      const R = d.replies || {}, P = d.appliedReplies || {}, sugg = d.suggestions || [], done = d.appliedSuggestions || 0;
-      if(stable(R) === stable(P) && sugg.length <= done) return;
-      const ids = Object.keys(R).filter(id => units.some(z => z.id === id) && stable(R[id]) !== stable(P[id] || {}));
-      const snaps = await Promise.all(ids.map(id => tx.get(unitRef(id))));
-      const now = new Date().toISOString();
-      snaps.forEach((us, i) => {
-        if(!us.exists) return;
-        const id = ids[i], u = us.data(), x = R[id] || {}, p = P[id] || {}, upd = {}, lines = [];
-        if(x.state === "confirmed" && x.appt && (x.appt !== p.appt || p.state !== "confirmed")){
-          if(u.status !== "Viewed" && u.status !== "Offer") upd.status = "Booked";
-          upd.appt = x.appt; upd.agent = AGENT() + (agent.phone ? " " + String(agent.phone).replace(/^65/, "") : "");
-          lines.push("Viewing confirmed for " + fmtWhen(x.appt) + ".");
-        }
-        if(x.state === "sold" && p.state !== "sold"){ upd.listingState = "Sold (per agent)"; upd.updatedAt = now; upd.updateNote = AGENT() + " says this unit is sold or withdrawn"; lines.push("This unit is sold or withdrawn."); }
-        if((x.view||"").trim() && x.view !== p.view) lines.push(x.view.trim());
-        const c = x.counter || {}, pc = p.counter || {};
-        if(typeof c.amountM === "number" && (c.amountM !== pc.amountM || (c.note||"") !== (pc.note||""))){
-          upd.counter = {amountM:c.amountM, note:c.note||"", at:now};
-          upd.updatedAt = now; upd.updateNote = `Seller counter-offer: ${fmtM(c.amountM)}`;
-          upd.offerHistory = FV.arrayUnion({kind:"counter", amountM:c.amountM, at:now, by:"agent"});
-          lines.push(`Seller's counter-offer: ${fmtM(c.amountM)}${c.note ? " — " + c.note : ""}`);
-        }
-        if(lines.length){
-          const text = lines.join(" ");
-          tx.set(unitRef(id).collection("comments").doc(), {by:"agent", text, at:now});
-          upd.commentCount = FV.increment(1); upd.lastComment = {by:"agent", text:text.slice(0,140), at:now};
-        }
-        if(Object.keys(upd).length) tx.update(unitRef(id), upd);
-      });
-      sugg.slice(done).forEach(sg => {
-        if(sg && sg.url) tx.set(db.collection("hs_requests").doc(), {type:"add", url:sg.url, note:sg.note||"", suggestedBy:AGENT(), by:"agent", status:"queued", createdAt:now});
-      });
-      tx.update(ref, {appliedReplies:R, appliedSuggestions:sugg.length});
+    const r = await fetch("https://firestore.googleapis.com/v1/" + path, {method, signal:ctl.signal, headers:{"Content-Type":"application/json", "Authorization":"Bearer " + idToken}, body: body ? JSON.stringify(body) : undefined});
+    if(r.status === 404) return null;
+    if(!r.ok) throw new Error("http " + r.status);
+    return await r.json();
+  } finally { clearTimeout(timer); }
+}
+let lastApplyTry = 0;
+async function applyBoardReplies(){
+  if(!unitsLoaded || applyingBoard || !agent || !agent.boardToken || !auth.currentUser) return;
+  if(board){
+    const pendingReplies = stable(board.replies || {}) !== stable(board.appliedReplies || {});
+    const pendingSugg = (board.suggestions || []).length > (board.appliedSuggestions || 0);
+    if(!pendingReplies && !pendingSugg && Date.now() - lastApplyTry < 120000) return;
+  }
+  applyingBoard = true; lastApplyTry = Date.now();
+  try {
+    const bpath = `${FS_DOCS()}/hs_board/${agent.boardToken}`;
+    const bdoc = await restCall("GET", bpath); if(!bdoc) return;
+    const d = fsDec({mapValue:{fields:bdoc.fields || {}}});
+    const R = d.replies || {}, P = d.appliedReplies || {}, sugg = d.suggestions || [], done = d.appliedSuggestions || 0;
+    if(stable(R) === stable(P) && sugg.length <= done) return;
+    const ids = Object.keys(R).filter(id => units.some(z => z.id === id) && stable(R[id]) !== stable(P[id] || {}));
+    const now = new Date().toISOString(), writes = [];
+    for(const id of ids){
+      const ud = await restCall("GET", `${FS_DOCS()}/hs_units/${id}`); if(!ud) continue;
+      const u = fsDec({mapValue:{fields:ud.fields || {}}}), x = R[id] || {}, p = P[id] || {}, upd = {}, lines = [], tf = [];
+      if(x.state === "confirmed" && x.appt && (x.appt !== p.appt || p.state !== "confirmed")){
+        if(u.status !== "Viewed" && u.status !== "Offer") upd.status = "Booked";
+        upd.appt = x.appt; upd.agent = AGENT() + (agent.phone ? " " + String(agent.phone).replace(/^65/, "") : "");
+        lines.push("Viewing confirmed for " + fmtWhen(x.appt) + ".");
+      }
+      if(x.state === "sold" && p.state !== "sold"){ upd.listingState = "Sold (per agent)"; upd.updatedAt = now; upd.updateNote = AGENT() + " says this unit is sold or withdrawn"; lines.push("This unit is sold or withdrawn."); }
+      if((x.view||"").trim() && x.view !== p.view) lines.push(x.view.trim());
+      const c = x.counter || {}, pc = p.counter || {};
+      if(typeof c.amountM === "number" && (c.amountM !== pc.amountM || (c.note||"") !== (pc.note||""))){
+        upd.counter = {amountM:c.amountM, note:c.note||"", at:now};
+        upd.updatedAt = now; upd.updateNote = `Seller counter-offer: ${fmtM(c.amountM)}`;
+        tf.push({fieldPath:"offerHistory", appendMissingElements:{values:[fsEnc({kind:"counter", amountM:c.amountM, at:now, by:"agent"})]}});
+        lines.push(`Seller's counter-offer: ${fmtM(c.amountM)}${c.note ? " — " + c.note : ""}`);
+      }
+      if(lines.length){
+        const text = lines.join(" ");
+        writes.push({update:{name:`${FS_DOCS()}/hs_units/${id}/comments/${randToken(20)}`, fields:fsEnc({by:"agent", text, at:now}).mapValue.fields}, currentDocument:{exists:false}});
+        upd.lastComment = {by:"agent", text:text.slice(0,140), at:now};
+        tf.push({fieldPath:"commentCount", increment:{integerValue:"1"}});
+      }
+      const keys = Object.keys(upd);
+      if(keys.length || tf.length) writes.push({update:{name:`${FS_DOCS()}/hs_units/${id}`, fields:fsEnc(upd).mapValue.fields}, updateMask:{fieldPaths:keys.map(fp)}, updateTransforms:tf, currentDocument:{exists:true}});
+    }
+    sugg.slice(done).forEach(sg => {
+      if(sg && sg.url) writes.push({update:{name:`${FS_DOCS()}/hs_requests/${randToken(20)}`, fields:fsEnc({type:"add", url:sg.url, note:sg.note||"", suggestedBy:AGENT(), by:"agent", status:"queued", createdAt:now}).mapValue.fields}, currentDocument:{exists:false}});
     });
+    writes.push({update:{name:bpath, fields:fsEnc({appliedReplies:R, appliedSuggestions:sugg.length}).mapValue.fields}, updateMask:{fieldPaths:["appliedReplies","appliedSuggestions"]}, currentDocument:{updateTime:bdoc.updateTime}});
+    await restCall("POST", `${FS_DOCS()}:commit`, {writes});
   } catch(e){ console.warn("Board reply not applied yet:", e && e.message); }
-  applyingBoard = false;
+  finally { applyingBoard = false; }
 }
 const syncAll = () => { applyBoardReplies(); syncBoardFromApp(); };
 document.addEventListener("visibilitychange", () => { if(document.visibilityState === "visible") syncAll(); });
