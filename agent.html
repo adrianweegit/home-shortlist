@@ -46,8 +46,6 @@ textarea{min-height:76px;resize:vertical}
 <body>
 <div class="wrap" id="root"><h1>Loading…</h1></div>
 <script src="config.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <script>
 (function(){
 "use strict";
@@ -57,21 +55,44 @@ const fmtWhen = s => { if(!s) return ""; const d = new Date(s); return isNaN(d) 
 const token = (location.hash || "").replace(/^#/, "");
 const root = $("root");
 if(!/^[A-Za-z0-9]{24,}$/.test(token)){ root.innerHTML = `<h1>Link not recognised</h1><p class="sub">Please use the full link from the WhatsApp message.</p>`; return; }
-firebase.initializeApp(window.HOME_SHORTLIST.firebase);
-const ref = firebase.firestore().collection("hs_agent").doc(token);
+// Plain HTTPS calls to Firestore (no SDK): works in WhatsApp's and other in-app browsers.
+const FB = window.HOME_SHORTLIST.firebase;
+const DOC = `projects/${FB.projectId}/databases/(default)/documents/hs_agent/${token}`;
+const API = "https://firestore.googleapis.com/v1/";
+const dec = v => { const [t, x] = Object.entries(v)[0];
+  if(t === "nullValue") return null; if(t === "integerValue") return Number(x); if(t === "doubleValue") return Number(x);
+  if(t === "timestampValue") return {toDate: () => new Date(x)};
+  if(t === "arrayValue") return (x.values || []).map(dec);
+  if(t === "mapValue") return Object.fromEntries(Object.entries(x.fields || {}).map(([k, y]) => [k, dec(y)]));
+  return x; };
+const enc = v => v === null || v === undefined ? {nullValue: null} : typeof v === "boolean" ? {booleanValue: v}
+  : typeof v === "number" ? {doubleValue: v} : typeof v === "string" ? {stringValue: v}
+  : Array.isArray(v) ? {arrayValue: {values: v.map(enc)}} : {mapValue: {fields: Object.fromEntries(Object.entries(v).map(([k, y]) => [k, enc(y)]))}};
+async function call(url, opts, tries){
+  for(let i = 0; i < (tries || 3); i++){
+    try { const r = await fetch(url, opts); if(r.status >= 500) throw new Error("server " + r.status); return r; }
+    catch(e){ if(i === (tries || 3) - 1) throw e; await new Promise(z => setTimeout(z, 800 * (i + 1))); }
+  }
+}
 const STATES = [["confirmed","✅ Confirmed"],["pending","⏳ Still checking"],["unavailable","⛔ Can't arrange"],["sold","🏷️ Sold / withdrawn"]];
 let req = null, state = {};
 
-ref.get().then(s => {
-  if(!s.exists){ throw new Error("missing"); }
-  req = s.data();
+call(API + DOC + "?key=" + FB.apiKey).then(async r => {
+  if(r.status === 403 || r.status === 404){ const e = new Error("gone"); e.gone = true; throw e; }
+  if(!r.ok) throw new Error("http " + r.status);
+  const d = await r.json();
+  req = dec({mapValue: {fields: d.fields || {}}});
   const prev = (req.reply && req.reply.homes) || {};
   (req.homes || []).forEach(h => {
     const p = prev[h.id] || {};
     state[h.id] = {state: p.state || (h.booked ? "confirmed" : "pending"), appt: p.appt || (h.booked ? h.appt : ""), view: p.view || ""};
   });
   render();
-}).catch(() => { root.innerHTML = `<h1>This link has expired</h1><p class="sub">Please ask for a fresh link on WhatsApp.</p>`; });
+}).catch(e => {
+  root.innerHTML = e && e.gone
+    ? `<h1>This link has expired</h1><p class="sub">Please ask for a fresh link on WhatsApp.</p>`
+    : `<h1>Couldn't load</h1><p class="sub">Please check your connection and <a href="" onclick="location.reload();return false">try again</a>. If it keeps happening, open the link in Safari or Chrome.</p>`;
+});
 
 function slotOptions(cur){
   const opts = (req.slots || []).filter(s => s.date).map(s => [s.date + "T" + s.start, s.label]);
@@ -111,7 +132,11 @@ async function send(){
   const homes = {};
   Object.entries(state).forEach(([id, s]) => { homes[id] = {state: s.state, appt: s.state === "confirmed" ? s.appt : "", view: (s.view||"").trim().slice(0,800)}; });
   try {
-    await ref.update({reply: {homes, note: ($("note").value||"").trim().slice(0,800)}, replyAt: firebase.firestore.FieldValue.serverTimestamp()});
+    const reply = {homes, note: ($("note").value||"").trim().slice(0,800)};
+    const r = await call(API + `projects/${FB.projectId}/databases/(default)/documents:commit?key=` + FB.apiKey, {method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({writes: [{update: {name: DOC, fields: {reply: enc(reply)}}, updateMask: {fieldPaths: ["reply"]},
+        updateTransforms: [{fieldPath: "replyAt", setToServerValue: "REQUEST_TIME"}], currentDocument: {exists: true}}]})});
+    if(!r.ok) throw new Error("http " + r.status);
     $("msg").innerHTML = `<div class="ok">Thank you! Sent to them. You can change anything and send again any time.</div>`;
   } catch(e){
     $("msg").innerHTML = `<p class="err">Couldn't send — please check your connection and try again.</p>`;
