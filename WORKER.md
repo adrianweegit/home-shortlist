@@ -79,3 +79,10 @@ freehold is not a plus on its own. Budget, lease and 6 km rules are unchanged.
 Requests with `suggestedBy` (e.g. "Andrew") came from their agent's board.
 Treat them like pasted links (always add, tag misses under `concerns`), and
 start the unit's `notes` with "Suggested by Andrew" plus his `note` if any.
+
+## Where a new home came from
+On every unit you create, also set:
+- `addedAt`: current UTC time (`YYYY-MM-DDTHH:MM:SSZ`)
+- `source`: "scan" (rescan find), "link" (a pasted link) or "agent" (request has `suggestedBy`)
+- `addedBy`: the request's `by` ("adrian" / "shernice") for pasted links
+The app uses these for its "New for you to review" list (newest first, with "From Claude's scan" / "Added by Shernice" / "Suggested by Andrew").

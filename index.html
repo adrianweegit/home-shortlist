@@ -138,6 +138,10 @@ h2.sec small{font:500 13px var(--f-body);color:var(--muted)}
 .route .hd2{display:flex;align-items:center;gap:8px;font-weight:700}
 .route .rt{font-size:13.5px;margin-top:4px}
 .route .meta{font-size:12px;color:var(--muted);margin-top:2px}
+.rlist{background:var(--paper);border-radius:16px;box-shadow:var(--shadow);padding:2px 12px}
+.rrow{display:flex;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}.rrow:last-child{border-bottom:none}
+.rrow [data-open]{cursor:pointer;min-width:0}.rrow b{font-family:var(--f-display);font-size:15.5px}.rrow .rs{font-size:12.5px;color:var(--muted);margin-top:1px}
+.rrow .tbtn{font-size:20px;opacity:.5;filter:grayscale(1)}
 .lastc{font-size:13px;background:var(--bg);border-radius:12px;padding:8px 10px}
 .lastc b{font-weight:700}
 .cmp-on{background:var(--kaya-soft);border-color:var(--kaya)}
@@ -453,6 +457,34 @@ function card(r){
   </article>`;
 }
 
+/* ---------- "New for you to review" (Top 5 tab) ---------- */
+const addedTime = u => Date.parse(u.addedAt || "") || Date.parse((u.checkedAt || "") + "T00:00:00Z") || 0;
+function originOf(u){
+  if(u.source === "agent" || /^Suggested by/i.test(u.notes || "")) return "Suggested by " + AGENT();
+  if(u.source === "link" && u.addedBy) return "Added by " + (NAME[u.addedBy] || u.addedBy);
+  if(u.source === "scan") return "From Claude's scan";
+  return "";
+}
+function reviewRow(u){
+  const upd = !isNewFor(u, me.key) && updatedFor(u, me.key);
+  const dots = places.map(p => { const t = tripOf(u, p.key); return t ? `<span class="trip ${esc(t.rating)}" style="padding:2px 7px;font-size:11.5px"><i></i>${esc(p.short||p.label)} ${esc(t.min)}m</span>` : ""; }).join("");
+  const sub = [money(u.askingM), u.sizeSqft ? Number(u.sizeSqft).toLocaleString("en-SG") + " sqft" : "", (u.format||"").split(/[,(;]/)[0].trim()].filter(Boolean).join(" · ");
+  const why = upd ? `<span style="color:var(--sky);font-weight:600">↻ ${esc(u.updateNote || "Updated")}</span>` : esc(originOf(u));
+  return `<div class="rrow"><div class="grow" data-open="${esc(u.id)}" role="button" tabindex="0">
+      <div><b>${esc(u.name)}</b> <span class="pill ${upd?"upd":"new"}">${upd?"Updated":"New"}</span></div>
+      <div class="rs">${esc(sub)}</div>${why ? `<div class="rs">${why}</div>` : ""}${dots ? `<div class="trips" style="margin-top:4px;gap:4px">${dots}</div>` : ""}</div>
+    <button class="tbtn" type="button" data-nope="${esc(u.id)}" aria-label="Not for us" title="Not for us">👎</button></div>`;
+}
+function newForReview(active, unrated){
+  const list = active.filter(u => (isNewFor(u, me.key) || updatedFor(u, me.key)) && !noped(u, me.key))
+    .sort((a,b) => (updatedFor(b, me.key) && !isNewFor(b, me.key) ? Date.parse(b.updatedAt)||0 : addedTime(b)) - (updatedFor(a, me.key) && !isNewFor(a, me.key) ? Date.parse(a.updatedAt)||0 : addedTime(a)));
+  const stillUnrated = unrated.filter(u => !list.includes(u)).length;
+  let s = `<h2 class="sec">New for you to review <small>${list.length ? list.length + " new" : ""}</small>${list.length > 5 ? `<button class="ghost" type="button" id="seeAllNew" style="margin-left:auto">See all</button>` : ""}</h2>`;
+  s += list.length ? `<div class="rlist">${list.slice(0,5).map(reviewRow).join("")}</div>` : `<div class="empty" style="padding:16px">You're all caught up ✨</div>`;
+  if(stillUnrated) s += `<p style="margin:10px 2px 0;font-size:13px"><button class="ghost" type="button" id="seeUnrated" style="padding:0">${stillUnrated} home${stillUnrated>1?"s":""} still without your hearts ›</button></p>`;
+  return s;
+}
+
 /* ---------- Views ---------- */
 function viewTop(){
   const active = units.filter(u => u.status !== "Rejected");
@@ -474,7 +506,7 @@ function viewTop(){
   }
   const next = units.filter(u => u.status === "Booked" && u.appt && new Date(u.appt) >= new Date(Date.now()-3*3600e3)).sort((a,b) => new Date(a.appt)-new Date(b.appt)).slice(0,2);
   if(next.length) h += `<h2 class="sec">Next viewings</h2><div class="tl">${next.map(u => viewItem(u,true)).join("")}</div>`;
-  if(unrated.length) h += `<h2 class="sec">Waiting for your hearts <small>${unrated.length} homes</small></h2><div class="list two">${unrated.sort((a,b)=>(a.distKm??99)-(b.distKm??99)).slice(0,4).map(card).join("")}</div>`;
+  h += newForReview(active, unrated);
   return h;
 }
 function viewItem(u, compact){
@@ -1011,6 +1043,7 @@ document.addEventListener("click", ev => {
     }
     return; }
   if(t.dataset.filter){ filter = t.dataset.filter; render(); return; }
+  if(t.id === "seeAllNew" || t.id === "seeUnrated"){ filter = t.id === "seeAllNew" ? "new" : "mine"; tab = "homes"; try{localStorage.setItem("hs-tab",tab);}catch(e){} render(); window.scrollTo(0,0); return; }
   if(t.dataset.cmp){ const id = t.dataset.cmp; compare = compare.includes(id) ? compare.filter(x => x !== id) : compare.concat(id).slice(-3); try{localStorage.setItem("hs-cmp",JSON.stringify(compare));}catch(e){} render(); toast(compare.includes(id) ? "Added to Compare (" + compare.length + "/3)" : "Removed from Compare"); return; }
   if(t.id === "clearcmp"){ compare = []; try{localStorage.setItem("hs-cmp","[]");}catch(e){} render(); return; }
   if(t.dataset.check){ const r = units.find(u => u.id === t.dataset.check); if(!r) return; const c = t.dataset.c; save(r.id, {["checks."+ckey(c)]: !(r.checks||{})[ckey(c)]}); return; }
