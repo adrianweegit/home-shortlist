@@ -122,3 +122,10 @@ If the photos have no labels, use the first /listing/<id>/UPHO. photo and set
 `photoNote` "Photo may not be of this unit"; if the listing says its images are AI /
 artist impressions, set `photoNote` "AI-generated impression (per listing)".
 If there are only development photos, leave `photoUrl` unset — the app shows a coloured tile.
+
+## Activity feed
+The app's bell shows an Activity feed read from `hs_meta` docs that have an
+`actAt` field. If you ever add a comment to a unit (`hs_units/<id>/comments`),
+also create `hs_meta/act_<random>` with
+`{"kind":"comment","by":"claude","unitId":<id>,"unitName":<name>,"text":<first 300 chars>,"actAt":<UTC ISO>}`.
+Never edit or delete other `act_*` docs or `hs_meta/actread`.

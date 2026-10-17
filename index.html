@@ -48,6 +48,28 @@ a{color:var(--pandan)}
 .brand h1{font-family:var(--f-display);font-weight:800;font-size:26px;letter-spacing:-.01em;margin:0;line-height:1.1}
 .brand p{margin:2px 0 0;color:var(--muted);font-size:13px}
 .who{display:flex;align-items:center;gap:6px}
+.bell{position:relative;background:none;border:none;font-size:20px;line-height:1;padding:4px 6px;cursor:pointer;color:var(--ink)}
+.bell .bdg{position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--rose);color:#fff;font:700 11px/18px var(--f-body,system-ui);text-align:center;box-shadow:0 0 0 2px var(--bg)}
+.pill.newc{background:var(--rose-soft);color:var(--rose);align-self:center}
+.actday{font:700 12px var(--f-body,system-ui);letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:14px 2px 4px}
+.actrow{display:flex;align-items:flex-start;gap:10px;width:100%;text-align:left;background:none;border:none;border-bottom:1px solid var(--line);padding:10px 2px;color:var(--ink);font:inherit;cursor:pointer}
+.actrow:disabled{opacity:.6;cursor:default}
+.actrow.unread{background:var(--kaya-soft);border-radius:12px;padding:10px 8px;border-bottom-color:transparent;margin:2px 0}
+.actrow .rthumb{flex:0 0 44px;width:44px;height:44px}
+.actph{flex:0 0 44px;display:block}
+.actgone{display:grid;place-items:center;background:var(--line);border-radius:10px}
+.actdot{flex:0 0 8px;width:8px;height:8px;border-radius:50%;margin-top:18px;background:var(--muted)}
+.actdot.adrian{background:var(--sky)} .actdot.shernice{background:var(--rose)} .actdot.agent{background:var(--kaya)} .actdot.claude{background:var(--pandan)}
+.acth{display:block;font-size:14px;line-height:1.35}
+.actrow.unread .acth{font-weight:600}
+.actt{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:13.5px;color:var(--ink);margin-top:2px}
+.acta{display:block;font-size:12px;color:var(--muted);margin-top:3px}
+.actnew{flex:0 0 9px;width:9px;height:9px;border-radius:50%;background:var(--rose);margin-top:18px}
+.muted{color:var(--muted)}
+.acth .hrt{color:var(--rose);letter-spacing:1px}
+.chip.on{background:var(--pandan-soft);border-color:var(--pandan);color:var(--pandan)}
+button.chip{cursor:pointer;font-family:inherit}
+
 .av{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font:700 13px var(--f-display);color:#fff}
 .av.adrian{background:var(--sky)} .av.shernice{background:var(--rose)}
 .av.me{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--kaya)}
@@ -298,6 +320,8 @@ let compare = [];
 let sheet = null;           // {type:"unit", id} | {type:"add"}
 let unsubComments = null;
 let comments = [];
+let acts = [];              // activity feed (hs_meta docs with actAt)
+let actRead = {};           // {adrian: ISO, shernice: ISO} — last time each opened Activity
 let unsubs = [];
 try{ const t = localStorage.getItem("hs-tab"); if(t) tab = t; const c = JSON.parse(localStorage.getItem("hs-cmp")||"[]"); if(Array.isArray(c)) compare = c.slice(0,3); }catch(e){}
 
@@ -388,6 +412,8 @@ function start(){
   }, ()=>{}));
   unsubs.push(db.doc("hs_meta/agent").onSnapshot(s => { const prev = agent && agent.boardToken; agent = s.exists ? s.data() : null; NAME.agent = AGENT(); if((agent && agent.boardToken) !== prev) watchBoard(); render(); }, ()=>{}));
   unsubs.push(db.doc("hs_meta/places").onSnapshot(s => { places = (s.exists && s.data().items) || []; render(); if(sheet && sheet.type === "unit") renderSheet(); }, ()=>{}));
+  unsubs.push(db.collection("hs_meta").orderBy("actAt","desc").limit(150).onSnapshot(s => { acts = s.docs.map(d => Object.assign({id:d.id}, d.data())); render(); if(sheet && sheet.type === "activity") renderActivitySheet(); }, ()=>{}));
+  unsubs.push(db.doc("hs_meta/actread").onSnapshot(s => { actRead = s.exists ? s.data() : {}; render(); }, ()=>{}));
   unsubs.push(db.doc("hs_meta/worker").onSnapshot(s => { meta = s.exists ? s.data() : null; if(sheet && sheet.type === "add") renderSheet(); }, ()=>{}));
 }
 const unitRef = id => db.collection("hs_units").doc(id);
@@ -402,7 +428,7 @@ function render(){
   if(!me) return;
   document.querySelectorAll(".tab").forEach(b => b.setAttribute("aria-current", b.dataset.tab === tab ? "page" : "false"));
   const head = `<header class="top"><div class="brand"><h1>Our Kovan Home</h1><p>${units.filter(u=>u.status!=="Rejected").length} homes in play · within 6 km of Kovan</p></div>
-    <div class="who">${KEYS.map(k => `<span class="av ${k} ${k===me.key?"me":""}" title="${esc(NAME[k])}">${esc(NAME[k][0])}</span>`).join("")}
+    <div class="who"><button class="bell" id="bellBtn" type="button" aria-label="Activity${unreadActs().length ? ", " + unreadActs().length + " new" : ""}">🔔${unreadActs().length ? `<span class="bdg">${unreadActs().length > 99 ? "99+" : unreadActs().length}</span>` : ""}</button>${KEYS.map(k => `<span class="av ${k} ${k===me.key?"me":""}" title="${esc(NAME[k])}">${esc(NAME[k][0])}</span>`).join("")}
     <button class="ghost" id="signout" type="button">Sign out</button></div></header>`;
   let body = "";
   if(tab === "top") body = viewTop();
@@ -475,7 +501,7 @@ function card(r){
       ${lc ? `<div class="lastc"><b>${esc(NAME[lc.by]||lc.by)}:</b> ${esc(lc.text)} <span style="color:var(--muted)">· ${esc(ago(lc.at))}</span></div>` : ""}
     </div>
     <div class="foot">
-      <button class="btn primary sm" type="button" data-open="${esc(r.id)}">💬 ${r.commentCount?esc(r.commentCount)+" ":""}Details</button>
+      <button class="btn primary sm" type="button" data-open="${esc(r.id)}">💬 ${r.commentCount?esc(r.commentCount)+" ":""}Details</button>${newCommentsFor(r) ? `<span class="pill newc">💬 ${newCommentsFor(r)} new</span>` : ""}
       ${r.url?`<a class="btn sm" href="${esc(r.url)}" target="_blank" rel="noopener">Listing ↗</a>`:""}
       <span class="grow"></span>
       <button class="btn sm ${inCmp?"cmp-on":""}" type="button" data-cmp="${esc(r.id)}">${inCmp?"✓ Comparing":"Compare"}</button>
@@ -587,7 +613,7 @@ function viewTop(){
   const top = ranked.slice(0,5);
   const unrated = active.filter(u => !ratingOf(u, me.key) && !noped(u, me.key));
   let h = `<h2 class="sec">Our Top 5 <small>by combined hearts</small></h2>`;
-  if(boardFresh()) h += `<button class="banner" type="button" data-reply="1">💬 <span class="grow"><b>${esc(AGENT())} updated his board</b> ${esc(ago(new Date(millis(board.replyAt)).toISOString()))} — ${esc(boardSummary())}</span>›</button>`;
+  if(false && boardFresh()) h += `<button class="banner" type="button" data-reply="1">💬 <span class="grow"><b>${esc(AGENT())} updated his board</b> ${esc(ago(new Date(millis(board.replyAt)).toISOString()))} — ${esc(boardSummary())}</span>›</button>`;
   if(!top.length) h += `<div class="empty">No hearts yet. Open <b>Homes</b> and give each place 1–5 ♥ — your Top 5 builds itself.</div>`;
   else {
     const p = [top[1], top[0], top[2]];
@@ -666,11 +692,67 @@ function viewCompare(){
     ${rows.map(([l,f]) => `<tr><th>${esc(l)}</th>${sel.map(u => `<td>${esc(f(u))}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
 }
 
+
+/* ---------- Activity: comments, Andrew's updates, hearts and thumbs-downs ---------- */
+// Each event is a doc in hs_meta with an actAt field (the existing rules already allow it).
+// Hearts/thumbs use one doc per person+home, so changing your mind updates it instead of piling up.
+function logAct(docId, data){
+  const ref = db.collection("hs_meta").doc(docId || ("act_" + randToken(20)));
+  (data ? ref.set(Object.assign({actAt:new Date().toISOString()}, data)) : ref.delete()).catch(()=>{});
+}
+const actTime = a => a.actAt || "";
+function unreadActs(){ if(!me) return []; const since = actRead[me.key] || ""; return acts.filter(a => a.by !== me.key && actTime(a) > since); }
+function newCommentsFor(r){
+  if(!me) return 0; const since = [actRead[me.key] || "", seenAt(r, me.key) || ""].sort().pop();
+  return acts.filter(a => a.kind === "comment" && a.unitId === r.id && a.by !== me.key && actTime(a) > since).length;
+}
+function openActivity(){
+  sheet = {type:"activity", since: actRead[me.key] || "", f:"all"};
+  const now = new Date().toISOString(); actRead = Object.assign({}, actRead, {[me.key]: now});
+  db.doc("hs_meta/actread").set({[me.key]: now}, {merge:true}).catch(()=>{});
+  render(); renderSheet(true);
+}
+const ACT_FILTERS = [["all","All"],["comment","Comments"],["agent",null],["hearts","Hearts & 👎"]];
+function actLine(a){
+  const who = NAME[a.by] || (a.by === "claude" ? "Claude" : a.by);
+  if(a.kind === "rate") return {head:`${who} gave <b class="hrt">${"♥".repeat(a.n||0)}</b> <span class="muted">${a.n}/5</span>`, text:""};
+  if(a.kind === "nope") return {head:`${who} gave a 👎 <span class="muted">not for us</span>`, text:a.text||""};
+  if(a.kind === "suggest") return {head:`${who} suggested a home`, text:a.text||""};
+  return {head:`${who} commented`, text:a.text||""};
+}
+function renderActivitySheet(){
+  const f = sheet.f || "all", since = sheet.since || "";
+  const list = acts.filter(a => f === "all" || (f === "comment" && (a.kind === "comment" || a.kind === "suggest")) || (f === "agent" && a.by === "agent") || (f === "hearts" && (a.kind === "rate" || a.kind === "nope")));
+  let lastDay = "";
+  const rows = list.map(a => {
+    const u = units.find(x => x.id === a.unitId), L = actLine(a), isNew = a.by !== me.key && actTime(a) > since;
+    const day = new Date(actTime(a)).toLocaleDateString("en-SG",{weekday:"long",day:"numeric",month:"short"});
+    const dh = day !== lastDay ? `<div class="actday">${esc(day)}</div>` : ""; lastDay = day;
+    const tile = u ? devTile(u).replace('class="pic devtile"','class="pic devtile rthumb"') : "";
+    const thumb = u ? (u.photoUrl ? `<span class="actph"><img class="rthumb" src="${esc(u.photoUrl)}" alt="" referrerpolicy="no-referrer" onerror="this.nextElementSibling.hidden=false;this.remove()"><span hidden>${tile}</span></span>` : tile) : `<div class="rthumb actgone">🏠</div>`;
+    const name = (u && u.name) || a.unitName || "";
+    const attrs = u ? `data-actopen="${esc(u.id)}" data-chat="${a.kind === "comment" ? 1 : 0}"` : "disabled";
+    return `${dh}<button class="actrow ${isNew ? "unread" : ""}" type="button" ${attrs}>
+      <span class="actdot ${esc(a.by)}"></span>${thumb}
+      <span class="grow"><span class="acth">${L.head}${name ? ` · <b>${esc(name)}</b>` : ""}</span>${L.text ? `<span class="actt">${esc(L.text)}</span>` : ""}
+      <span class="acta">${esc(ago(actTime(a)))}${u ? "" : name ? " · no longer on your list" : ""}</span></span>${isNew ? `<span class="actnew" aria-label="new"></span>` : ""}</button>`;
+  }).join("");
+  const nNew = acts.filter(a => a.by !== me.key && actTime(a) > since).length;
+  const chips = ACT_FILTERS.map(([k, l]) => `<button class="chip ${f === k ? "on" : ""}" type="button" data-actf="${k}">${esc(l || AGENT())}</button>`).join("");
+  const sc0 = $("sheetScroll"), keep = sheet.type === "activity" && sc0 ? sc0.scrollTop : 0;
+  $("sheetRoot").innerHTML = `<div class="scrim" id="scrim"></div><div class="sheet" role="dialog" aria-modal="true" aria-label="Activity">
+    <div class="hd"><h3>Activity${nNew ? ` <span class="muted" style="font-size:14px;font-weight:600">· ${nNew} new</span>` : ""}</h3><button class="close" id="closeSheet" type="button" aria-label="Close">×</button></div>
+    <div class="sc" id="sheetScroll"><div class="chips" style="margin:0 0 6px">${chips}</div>
+      ${rows || `<div style="color:var(--muted);font-size:14px;padding:18px 4px">Nothing here yet. Comments, ${esc(AGENT())}'s updates, hearts and 👎 will show up here.</div>`}</div></div>`;
+  $("scrim").onclick = closeSheet; $("closeSheet").onclick = closeSheet;
+  const sc = $("sheetScroll"); if(sc) sc.scrollTop = keep;
+}
+
 /* ---------- Sheet: unit detail ---------- */
-function openUnit(id){
+function openUnit(id, toChat){
   const r0 = units.find(u => u.id === id);
-  sheet = {type:"unit", id, wasUpdated: r0 && updatedFor(r0, me.key) ? (r0.updateNote || "Details changed since you last looked") : ""}; comments = [];
-  if(r0 && (!seenAt(r0, me.key) || isNewFor(r0, me.key) || updatedFor(r0, me.key))) unitRef(id).update({["seenBy."+me.key]: new Date().toISOString()}).catch(()=>{});
+  sheet = {type:"unit", id, toChat:!!toChat, wasUpdated: r0 && updatedFor(r0, me.key) ? (r0.updateNote || "Details changed since you last looked") : ""}; comments = [];
+  if(r0 && (!seenAt(r0, me.key) || isNewFor(r0, me.key) || updatedFor(r0, me.key) || newCommentsFor(r0))) unitRef(id).update({["seenBy."+me.key]: new Date().toISOString()}).catch(()=>{});
   if(unsubComments) unsubComments();
   unsubComments = unitRef(id).collection("comments").orderBy("at").onSnapshot(s => { comments = s.docs.map(d => Object.assign({id:d.id}, d.data())); renderMsgs(); }, ()=>{});
   renderSheet(true);
@@ -680,6 +762,7 @@ function renderMsgs(){
   const el = $("msgs"); if(!el) return;
   el.innerHTML = comments.length ? comments.map(c => `<div class="msg ${esc(c.by)} ${c.by===me.key?"mine":""}"><div class="by">${esc(NAME[c.by]||c.by)} · ${esc(ago(c.at))}</div>${esc(c.text)}</div>`).join("") : `<div style="color:var(--muted);font-size:13px">No comments yet. Say what you liked or what worries you.</div>`;
   const sc = $("sheetScroll"); if(sc && renderMsgs._stick) sc.scrollTop = sc.scrollHeight;
+  if(sheet && sheet.toChat && comments.length){ sheet.toChat = false; const box = el.closest(".box"); if(box && sc) sc.scrollTop = box.offsetTop - 8; }
 }
 function renderSheet(fresh){
   const root = $("sheetRoot");
@@ -688,6 +771,7 @@ function renderSheet(fresh){
   if(sheet.type === "ask") return renderAskSheet();
   if(sheet.type === "reply") return renderReplySheet();
   if(sheet.type === "dup") return renderDupSheet();
+  if(sheet.type === "activity") return renderActivitySheet();
   const r = units.find(u => u.id === sheet.id);
   if(!r){ closeSheet(); return; }
   const st = STATUSES.includes(r.status) ? r.status : "Unviewed";
@@ -736,7 +820,7 @@ function renderSheet(fresh){
     $("scrim").onclick = closeSheet; $("closeSheet").onclick = closeSheet;
     $("composer").onsubmit = async ev => { ev.preventDefault(); const t = $("cIn").value.trim(); if(!t) return; $("cIn").value = ""; renderMsgs._stick = true;
       const at = new Date().toISOString();
-      try { await unitRef(r.id).collection("comments").add({by:me.key, text:t, at}); await unitRef(r.id).update({commentCount: FV.increment(1), lastComment:{by:me.key, text:t.slice(0,140), at}}); }
+      try { logAct(null, {kind:"comment", by:me.key, unitId:r.id, unitName:r.name||"", text:t.slice(0,300), actAt:at}); await unitRef(r.id).collection("comments").add({by:me.key, text:t, at}); await unitRef(r.id).update({commentCount: FV.increment(1), lastComment:{by:me.key, text:t.slice(0,140), at}}); }
       catch(e){ toast("Couldn't send — check your connection"); } };
   }
   $("sheetTitle").textContent = r.name;
@@ -949,12 +1033,14 @@ async function applyBoardReplies(){
         const text = lines.join(" ");
         writes.push({update:{name:`${FS_DOCS()}/hs_units/${id}/comments/${randToken(20)}`, fields:fsEnc({by:"agent", text, at:now}).mapValue.fields}, currentDocument:{exists:false}});
         upd.lastComment = {by:"agent", text:text.slice(0,140), at:now};
+        writes.push({update:{name:`${FS_DOCS()}/hs_meta/act_${randToken(20)}`, fields:fsEnc({kind:"comment", by:"agent", unitId:id, unitName:u.name||"", text:text.slice(0,300), actAt:now}).mapValue.fields}, currentDocument:{exists:false}});
         tf.push({fieldPath:"commentCount", increment:{integerValue:"1"}});
       }
       const keys = Object.keys(upd);
       if(keys.length || tf.length) writes.push({update:{name:`${FS_DOCS()}/hs_units/${id}`, fields:fsEnc(upd).mapValue.fields}, updateMask:{fieldPaths:keys.map(fp)}, updateTransforms:tf, currentDocument:{exists:true}});
     }
     sugg.slice(done).forEach(sg => {
+      if(sg && sg.url) writes.push({update:{name:`${FS_DOCS()}/hs_meta/act_${randToken(20)}`, fields:fsEnc({kind:"suggest", by:"agent", unitId:"", unitName:"", text:(sg.note ? sg.note + " — " : "") + sg.url, actAt:now}).mapValue.fields}, currentDocument:{exists:false}});
       if(sg && sg.url) writes.push({update:{name:`${FS_DOCS()}/hs_requests/${randToken(20)}`, fields:fsEnc({type:"add", url:sg.url, note:sg.note||"", suggestedBy:AGENT(), by:"agent", status:"queued", createdAt:now}).mapValue.fields}, currentDocument:{exists:false}});
     });
     writes.push({update:{name:bpath, fields:fsEnc({appliedReplies:R, appliedSuggestions:sugg.length}).mapValue.fields}, updateMask:{fieldPaths:["appliedReplies","appliedSuggestions"]}, currentDocument:{updateTime:bdoc.updateTime}});
@@ -1144,6 +1230,7 @@ function wireOffer(r){
 }
 async function addComment(id, by, text){
   const at = new Date().toISOString();
+  const u = units.find(x => x.id === id); logAct(null, {kind:"comment", by, unitId:id, unitName:(u && u.name)||"", text:text.slice(0,300), actAt:at});
   await unitRef(id).collection("comments").add({by, text, at});
   await unitRef(id).update({commentCount:FV.increment(1), lastComment:{by, text:text.slice(0,140), at}});
 }
@@ -1153,6 +1240,9 @@ document.addEventListener("click", ev => {
   const t = ev.target.closest("button,[data-open]"); if(!t || !me) return;
   if(t.classList.contains("tab")){ tab = t.dataset.tab; try{localStorage.setItem("hs-tab",tab);}catch(e){} render(); window.scrollTo(0,0); return; }
   if(t.id === "askBtn"){ openAsk(); return; }
+  if(t.id === "bellBtn"){ openActivity(); return; }
+  if(t.dataset.actopen){ openUnit(t.dataset.actopen, t.dataset.chat === "1"); return; }
+  if(t.dataset.actf){ sheet.f = t.dataset.actf; renderActivitySheet(); return; }
   if(t.dataset.reply){ openReply(); return; }
   if(t.dataset.dup){ sheet = {type:"dup", id:t.dataset.dup, q:""}; renderSheet(true); return; }
   if(t.dataset.dupyes){ mergeInto(t.dataset.dupyes, t.dataset.into); return; }
@@ -1161,16 +1251,21 @@ document.addEventListener("click", ev => {
   if(t.dataset.open){ openUnit(t.dataset.open); return; }
   if(t.dataset.rate){ const id = t.dataset.rate, n = +t.dataset.n; const r = units.find(u => u.id === id); const cur = r ? ratingOf(r, me.key) : 0; const upd = {["ratings."+me.key]: cur === n ? 0 : n};
     if(r && noped(r, me.key)){ upd["nope."+me.key] = false; if(r.status === "Rejected" && r.nopeRejected){ upd.status = r.prevStatus || "Unviewed"; upd.nopeRejected = false; } }
-    save(id, upd); return; }
+    save(id, upd);
+    if(r){ const nv = cur === n ? 0 : n; logAct(`act_rate_${me.key}_${id}`, nv ? {kind:"rate", by:me.key, unitId:id, unitName:r.name||"", n:nv} : null); if(noped(r, me.key)) logAct(`act_nope_${me.key}_${id}`, null); }
+    return; }
   if(t.dataset.nope){ const r = units.find(u => u.id === t.dataset.nope); if(!r) return;
     const on = !noped(r, me.key); const upd = {["nope."+me.key]: on};
     if(on){ upd["ratings."+me.key] = 0;
       const both = KEYS.every(k => k === me.key || noped(r, k));
       if(both && r.status !== "Rejected"){ upd.status = "Rejected"; upd.prevStatus = r.status || "Unviewed"; upd.nopeRejected = true; upd.appt = ""; }
       save(r.id, upd, both ? "You both said no — moved to Rejected" : "Thumbs down saved");
+      logAct(`act_nope_${me.key}_${r.id}`, {kind:"nope", by:me.key, unitId:r.id, unitName:r.name||"", text: both && r.status !== "Rejected" ? "You both said no — moved to Rejected" : ""});
+      logAct(`act_rate_${me.key}_${r.id}`, null);
     } else {
       if(r.status === "Rejected" && r.nopeRejected){ upd.status = r.prevStatus || "Unviewed"; upd.nopeRejected = false; }
       save(r.id, upd, r.nopeRejected ? "Back in the list" : "Thumbs down removed");
+      logAct(`act_nope_${me.key}_${r.id}`, null);
     }
     return; }
   if(t.dataset.filter){ filter = t.dataset.filter; render(); return; }
