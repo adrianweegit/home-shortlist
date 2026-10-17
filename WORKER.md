@@ -58,7 +58,23 @@ any of these it misses under `concerns` (short tags such as "Under 1,400 sqft").
    high floor with greenery) — the development they both like most.
 
 Format (GF / penthouse / high floor / townhouse) is not a deciding factor, and
-freehold is not a plus on its own. Budget, lease and 6 km rules are unchanged.
+freehold is not a plus on its own. Budget, lease and 6 km rules are unchanged,
+except for landed homes below.
+
+## Landed homes (added 17 Oct 2026)
+Landed homes are now in scope too: cluster houses, strata terraces, townhouses
+and other landed homes within 6 km of Kovan.
+- **Budget:** up to about **S$3.0M** for landed (condos stay at S$2.8M).
+- **Set `landed: true`** on every landed unit you add — the app then uses the
+  S$3.0M budget for it. Don't add an "Over budget" concern below S$3.0M.
+- **School runs still apply:** PLMGS must be "easy" or "ok" in
+  `tools/transit.py`, same as condos. This rules out most of Seletar Hills
+  (Sunrise Terrace etc. came out "hard"); look in Kovan, Hougang, Serangoon
+  Gardens/Chartwell, Upper Serangoon and Bartley first.
+- **Size/layout:** at least 4 bedrooms, or 3 plus a study/guest room that can
+  serve as a bedroom; ~2,000 sqft or more is typical and fine.
+- The "mid-to-large condo" rule doesn't apply to landed, but for cluster homes
+  note facilities and upkeep in `notes`; flag very old or tired houses as a concern.
 
 ## Duplicates and repeats
 - **Same unit, different agent:** before adding any listing, compare it with

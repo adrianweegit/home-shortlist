@@ -339,7 +339,7 @@ const tripScore = r => !places.length || !r.transit ? 999 : places.reduce((a,p) 
 const dirUrl = (r, p) => `https://www.google.com/maps/dir/?api=1&origin=${r.lat},${r.lng}&destination=${p.lat},${p.lng}&travelmode=transit`;
 function autoConcerns(r){
   const out = [];
-  if(typeof r.askingM === "number" && r.askingM > CFG.budgetM) out.push("Over budget");
+  if(typeof r.askingM === "number" && r.askingM > budgetOf(r)) out.push("Over budget");
   const ly = leaseYrs(r); if(ly !== null && ly < CFG.minLeaseYears) out.push("Lease " + ly + " yrs");
   if(typeof r.distKm === "number" && r.distKm > CFG.maxKmFromKovan) out.push("Over 6 km");
   if(/^fails:/i.test(r.notes||"")) { /* covered by notes */ }
@@ -391,6 +391,7 @@ function start(){
   unsubs.push(db.doc("hs_meta/worker").onSnapshot(s => { meta = s.exists ? s.data() : null; if(sheet && sheet.type === "add") renderSheet(); }, ()=>{}));
 }
 const unitRef = id => db.collection("hs_units").doc(id);
+function budgetOf(r){ return r && r.landed && CFG.landedBudgetM ? CFG.landedBudgetM : CFG.budgetM; }
 async function save(id, data, okMsg){
   try { await unitRef(id).update(data); if(okMsg) toast(okMsg); }
   catch(e){ toast("Couldn't save — " + (e.code === "permission-denied" ? "no permission" : "check your connection")); }
@@ -430,10 +431,10 @@ function heartsRow(r, k){
 function bar(r){
   if(typeof r.askingM !== "number") return "";
   const lo = r.fairLowM, hi = r.fairHighM;
-  const vals = [r.askingM, CFG.budgetM].concat(typeof lo === "number" ? [lo,hi] : []);
+  const B = budgetOf(r); const vals = [r.askingM, B].concat(typeof lo === "number" ? [lo,hi] : []);
   const min = Math.min(...vals)*0.96, max = Math.max(...vals)*1.03, pct = v => ((v-min)/(max-min)*100).toFixed(1) + "%";
-  return `<div><div class="bar">${typeof lo==="number"?`<span class="band" style="left:${pct(lo)};width:calc(${pct(hi)} - ${pct(lo)})"></span>`:""}<span class="bud" style="left:${pct(CFG.budgetM)}" title="Budget"></span><span class="mk" style="left:calc(${pct(r.askingM)} - 2px)" title="Asking"></span></div>
-    <div class="barlbl"><span>▮ asking${typeof lo==="number"?" · ▭ fair value":""}</span><span style="color:var(--rose)">┆ budget S$${CFG.budgetM}M</span></div></div>`;
+  return `<div><div class="bar">${typeof lo==="number"?`<span class="band" style="left:${pct(lo)};width:calc(${pct(hi)} - ${pct(lo)})"></span>`:""}<span class="bud" style="left:${pct(B)}" title="Budget"></span><span class="mk" style="left:calc(${pct(r.askingM)} - 2px)" title="Asking"></span></div>
+    <div class="barlbl"><span>▮ asking${typeof lo==="number"?" · ▭ fair value":""}</span><span style="color:var(--rose)">┆ ${r.landed?"landed ":""}budget S$${B}M</span></div></div>`;
 }
 // Listing photo across the top of a card. If the site blocks it, the banner removes
 // itself and the card falls back to its tile. Homes without a photo get a coloured
@@ -465,7 +466,7 @@ function card(r){
       <div class="row"><span class="dist">${typeof r.distKm==="number"?(r.distEst?"≈":"")+r.distKm.toFixed(r.distKm<1?2:1)+" km":"—"} from Kovan</span><span class="pill st-${st}">${esc(STATUS_LABEL[st])}</span>${isNewFor(r,me.key)?`<span class="pill new">New</span>`:updatedFor(r,me.key)?`<span class="pill upd" title="${esc(r.updateNote||"")}">Updated</span>`:""}${r.listingState&&r.listingState!=="Live"?`<span class="pill st-Booked">${esc(r.listingState)}</span>`:""}</div>
     </div></div>
     <div class="body">
-      <div class="money"><span class="ask ${r.askingM>CFG.budgetM?"over":""}">${esc(money(r.askingM))}</span><span class="fair">fair ${esc(fairTxt(r))}</span></div>
+      <div class="money"><span class="ask ${r.askingM>budgetOf(r)?"over":""}">${esc(money(r.askingM))}</span><span class="fair">fair ${esc(fairTxt(r))}</span></div>
       ${bar(r)}
       <div class="chips"><span class="chip fact">${esc(r.beds||"")}</span>${r.sizeSqft?`<span class="chip fact">${Number(r.sizeSqft).toLocaleString("en-SG")} sqft</span>`:""}<span class="chip fact">🚇 ${esc(r.mrt||"—")}${r.mrtDist?" · "+esc(r.mrtDist):""}</span><span class="chip fact">⏳ ${esc(r.lease||"—")}</span><span class="chip fact">${esc(r.format||"")}</span></div>
       ${tripChips(r)}
@@ -625,7 +626,7 @@ function viewViewings(){
 }
 const FILTERS = [
   ["active","In play", u => u.status !== "Rejected"],
-  ["budget","Within budget", u => u.status !== "Rejected" && typeof u.askingM === "number" && u.askingM <= CFG.budgetM],
+  ["budget","Within budget", u => u.status !== "Rejected" && typeof u.askingM === "number" && u.askingM <= budgetOf(u)],
   ["new","New for me", u => (isNewFor(u, me.key) || updatedFor(u, me.key)) && u.status !== "Rejected"],
   ["mine","Not rated by me", u => u.status !== "Rejected" && !ratingOf(u, me.key) && !noped(u, me.key)],
   ["booked","Booked", u => u.status === "Booked"],
@@ -695,7 +696,7 @@ function renderSheet(fresh){
     ${photoBanner(r, true)}
     ${dupBanner(r, true)}
     ${sheet.wasUpdated ? `<div class="box" style="background:var(--sky-soft)"><b style="color:var(--sky)">↻ Updated since you last looked:</b> ${esc(sheet.wasUpdated)}</div>` : ""}
-    <div class="box"><div class="money"><span class="ask ${r.askingM>CFG.budgetM?"over":""}">${esc(money(r.askingM))}</span><span class="fair">fair ${esc(fairTxt(r))}</span></div>
+    <div class="box"><div class="money"><span class="ask ${r.askingM>budgetOf(r)?"over":""}">${esc(money(r.askingM))}</span><span class="fair">fair ${esc(fairTxt(r))}</span></div>
       ${r.askingNote?`<div style="font-size:12.5px;color:var(--muted);margin-top:4px">${esc(r.askingNote)}</div>`:""}
       ${r.fairBasis?`<div style="font-size:12.5px;color:var(--muted);margin-top:4px">Fair value basis: ${esc(r.fairBasis)}</div>`:""}
       <div style="margin-top:10px">${bar(r)}</div>

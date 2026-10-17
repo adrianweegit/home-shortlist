@@ -18,6 +18,7 @@ window.HOME_SHORTLIST = {
     "meiyi77@gmail.com": { key: "shernice", name: "Shernice" }
   },
   budgetM: 2.8,
+  landedBudgetM: 3.0,   // cluster / terrace / landed homes
   minLeaseYears: 80,
   maxKmFromKovan: 6
 };
