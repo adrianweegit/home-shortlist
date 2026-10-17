@@ -228,6 +228,22 @@ service cloud.firestore {
     // long random code that only appears in the link he is sent. Without
     // signing in he can open that one document (not list others) and add his
     // reply until it expires; he cannot change anything else.
+    // The agent's permanent board. Same idea: only someone holding the long
+    // random link can open this one document (never list others), and they can
+    // only write their own reply fields while the board is active. Resetting
+    // the link in the app deletes the old document, so the old link dies.
+    match /hs_board/{token} {
+      allow read, write: if hsUser();
+      allow get: if token.size() >= 24 && resource.data.active == true;
+      allow update: if token.size() >= 24
+        && resource.data.active == true
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['replies', 'agentNote', 'suggestions', 'replyAt', 'agentSeenAt'])
+        && request.resource.data.replies is map
+        && request.resource.data.suggestions is list
+        && request.resource.data.suggestions.size() <= 50;
+    }
+
     match /hs_agent/{token} {
       allow read, write: if hsUser();
       allow get: if token.size() >= 24 && resource.data.expiresAt > request.time;

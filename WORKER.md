@@ -74,3 +74,8 @@ freehold is not a plus on its own. Budget, lease and 6 km rules are unchanged.
   (different size, or clearly different floor/stack).
 - A pasted link to a development they rejected before is still added (they
   chose it), with a concern tag noting the earlier rejection.
+
+## Suggestions from the agent
+Requests with `suggestedBy` (e.g. "Andrew") came from their agent's board.
+Treat them like pasted links (always add, tag misses under `concerns`), and
+start the unit's `notes` with "Suggested by Andrew" plus his `note` if any.

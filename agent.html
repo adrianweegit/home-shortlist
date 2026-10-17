@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Viewing request</title>
+<title>Viewing board</title>
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
 <meta name="theme-color" content="#3F7D4E">
@@ -11,40 +11,54 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=Figtree:wght@400;500;600;700&display=swap">
 <style>
-/* A one-page reply form for the agent: who's asking, the homes, their free times,
-   and per home a confirmed time + his view. Same warm palette as the app. */
-:root{--bg:#FBF8F5;--paper:#fff;--ink:#2A2226;--muted:#776A70;--line:#EDE4DE;--pandan:#3F7D4E;--pandan-soft:#E4F0E6;--kaya-soft:#FBF1D6;--rose:#D9546E;
+/* The agent's permanent board: sections from "needs a time" to "closed", each home
+   editable inline, changes since his last visit highlighted in kaya yellow. */
+:root{--bg:#FBF8F5;--paper:#fff;--ink:#2A2226;--muted:#776A70;--line:#EDE4DE;--pandan:#3F7D4E;--pandan-soft:#E4F0E6;--kaya:#E9B949;--kaya-soft:#FBF1D6;--rose:#D9546E;--rose-soft:#FBE4E8;
   --shadow:0 1px 2px rgba(42,34,38,.06),0 6px 18px rgba(42,34,38,.06);--fd:"Bricolage Grotesque","Avenir Next","Segoe UI",sans-serif;--fb:"Figtree",-apple-system,"Segoe UI",Roboto,sans-serif;color-scheme:light}
-@media (prefers-color-scheme:dark){:root{--bg:#17141A;--paper:#221D24;--ink:#F2ECEE;--muted:#B4A7AD;--line:#352D37;--pandan:#7CC492;--pandan-soft:#21352A;--kaya-soft:#3A3120;--rose:#F07A92;--shadow:0 1px 2px rgba(0,0,0,.3),0 6px 18px rgba(0,0,0,.25);color-scheme:dark}}
+@media (prefers-color-scheme:dark){:root{--bg:#17141A;--paper:#221D24;--ink:#F2ECEE;--muted:#B4A7AD;--line:#352D37;--pandan:#7CC492;--pandan-soft:#21352A;--kaya:#F0C766;--kaya-soft:#3A3120;--rose:#F07A92;--rose-soft:#3D2229;--shadow:0 1px 2px rgba(0,0,0,.3),0 6px 18px rgba(0,0,0,.25);color-scheme:dark}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 var(--fb);-webkit-text-size-adjust:100%}
 button,input,select,textarea{font:inherit;color:inherit}
-.wrap{max-width:640px;margin:0 auto;padding:calc(env(safe-area-inset-top,0px) + 18px) 16px calc(env(safe-area-inset-bottom,0px) + 40px)}
+.wrap{max-width:640px;margin:0 auto;padding:calc(env(safe-area-inset-top,0px) + 18px) 16px calc(env(safe-area-inset-bottom,0px) + 110px)}
 h1{font:800 24px/1.15 var(--fd);margin:0 0 4px}
-.sub{color:var(--muted);margin:0 0 14px}
-.box{background:var(--paper);border-radius:16px;box-shadow:var(--shadow);padding:14px;margin-top:12px}
-.box h2{font:700 18px/1.2 var(--fd);margin:0}
-.box h3{font:700 12.5px var(--fb);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 8px}
+.sub{color:var(--muted);margin:0 0 6px}
+h2.sec{font:700 18px var(--fd);margin:22px 0 4px;display:flex;gap:8px;align-items:baseline}
+h2.sec small{font:500 13px var(--fb);color:var(--muted)}
+.box{background:var(--paper);border-radius:16px;box-shadow:var(--shadow);padding:14px;margin-top:10px}
+.box.changed{box-shadow:0 0 0 2px var(--kaya),var(--shadow)}
+.box h3{font:700 17px/1.2 var(--fd);margin:0}
+.box h4{font:700 12.5px var(--fb);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 8px}
 .meta{color:var(--muted);font-size:13px;margin-top:2px}
+.chg{background:var(--kaya-soft);border-radius:10px;padding:6px 10px;margin-top:8px;font-size:13px;font-weight:600}
+.news{background:var(--kaya-soft);border-radius:14px;padding:12px 14px;margin-top:12px}
+.news ul{margin:6px 0 0;padding-left:18px}
 a{color:var(--pandan)}
 .slots{display:flex;flex-wrap:wrap;gap:6px}
 .slot{font-size:13px;border-radius:999px;background:var(--pandan-soft);color:var(--pandan);padding:4px 10px;font-weight:600}
-.opts{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}
-.opt{border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:9px 8px;font-size:13.5px;font-weight:600;text-align:center;cursor:pointer}
+.opts{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px}
+.opt{border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:9px 6px;font-size:13px;font-weight:600;text-align:center;cursor:pointer}
 .opt[aria-pressed="true"]{background:var(--pandan);border-color:var(--pandan);color:#fff}
 label{display:flex;flex-direction:column;gap:4px;font-size:12.5px;font-weight:600;color:var(--muted);margin-top:10px}
-input,select,textarea{width:100%;min-width:0;border:1px solid var(--line);border-radius:10px;padding:9px 10px;background:var(--bg);font-size:15px;color:var(--ink);font-weight:400}
-textarea{min-height:76px;resize:vertical}
-.send{width:100%;margin-top:16px;border:none;border-radius:12px;background:var(--pandan);color:#fff;font-weight:700;font-size:16px;padding:14px;cursor:pointer}
-.send:disabled{opacity:.6}
-.ok{background:var(--pandan-soft);color:var(--pandan);border-radius:12px;padding:12px 14px;margin-top:12px;font-weight:600}
-.err{color:var(--rose)}
-.booked{display:inline-block;font-size:11.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;background:var(--kaya-soft);border-radius:6px;padding:2px 7px;margin-left:6px;vertical-align:2px}
+input,textarea{width:100%;min-width:0;border:1px solid var(--line);border-radius:10px;padding:9px 10px;background:var(--bg);font-size:15px;color:var(--ink);font-weight:400}
+textarea{min-height:70px;resize:vertical}
+.dt{position:relative;border:1px solid var(--line);border-radius:10px;background:var(--bg);padding:9px 10px;font-size:15px;font-weight:400;color:var(--ink);min-height:42px}
+.dt.empty{color:var(--muted)}
+.dt input{position:absolute;inset:0;opacity:0;width:100%;height:100%;border:none;padding:0}
+.offer{display:flex;justify-content:space-between;gap:10px;font-size:14px;margin-top:8px}
+.offer b{font-size:16px}
+.pill{font:700 10.5px var(--fb);text-transform:uppercase;letter-spacing:.06em;border-radius:6px;padding:3px 7px;background:var(--line);color:var(--muted)}
+.bar{position:fixed;left:0;right:0;bottom:0;background:var(--paper);border-top:1px solid var(--line);padding:10px 16px calc(env(safe-area-inset-bottom,0px) + 10px)}
+.bar .in{max-width:640px;margin:0 auto;display:flex;gap:10px;align-items:center}
+.send{flex:1;border:none;border-radius:12px;background:var(--pandan);color:#fff;font-weight:700;font-size:16px;padding:13px;cursor:pointer}
+.send:disabled{opacity:.55}
+.ok{color:var(--pandan);font-weight:600;font-size:13px}
+.err{color:var(--rose);font-size:13px}
 [hidden]{display:none!important}
 </style>
 </head>
 <body>
 <div class="wrap" id="root"><h1>Loading…</h1></div>
+<div class="bar" id="bar" hidden><div class="in"><span id="msg" style="font-size:13px;flex:1"></span><button class="send" id="send" type="button" disabled>Save changes</button></div></div>
 <script src="config.js"></script>
 <script>
 (function(){
@@ -52,97 +66,131 @@ textarea{min-height:76px;resize:vertical}
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtWhen = s => { if(!s) return ""; const d = new Date(s); return isNaN(d) ? s : d.toLocaleString("en-SG",{weekday:"short",day:"numeric",month:"short",hour:"numeric",minute:"2-digit"}); };
+const fmtM = m => typeof m === "number" ? "S$" + Math.round(m*1e6).toLocaleString("en-SG") : "";
+function parseMoney(s){ const t = String(s||"").replace(/[S$,\s]/gi, "").toLowerCase(); if(!t) return null; let n = parseFloat(t); if(isNaN(n)) return null;
+  if(/k$/.test(t)) n /= 1000; else if(!/m$/.test(t) && n > 1000) n /= 1e6; return Math.round(n*1e4)/1e4; }
 const token = (location.hash || "").replace(/^#/, "");
 const root = $("root");
 if(!/^[A-Za-z0-9]{24,}$/.test(token)){ root.innerHTML = `<h1>Link not recognised</h1><p class="sub">Please use the full link from the WhatsApp message.</p>`; return; }
-// Plain HTTPS calls to Firestore (no SDK): works in WhatsApp's and other in-app browsers.
+
+// Plain HTTPS to Firestore (no SDK) so it works in WhatsApp's and other in-app browsers.
 const FB = window.HOME_SHORTLIST.firebase;
-const DOC = `projects/${FB.projectId}/databases/(default)/documents/hs_agent/${token}`;
-const API = "https://firestore.googleapis.com/v1/";
+const BASE = `https://firestore.googleapis.com/v1/projects/${FB.projectId}/databases/(default)/documents`;
+const DOC = `projects/${FB.projectId}/databases/(default)/documents/hs_board/${token}`;
 const dec = v => { const [t, x] = Object.entries(v)[0];
-  if(t === "nullValue") return null; if(t === "integerValue") return Number(x); if(t === "doubleValue") return Number(x);
-  if(t === "timestampValue") return {toDate: () => new Date(x)};
+  if(t === "nullValue") return null; if(t === "integerValue" || t === "doubleValue") return Number(x);
+  if(t === "timestampValue") return new Date(x);
   if(t === "arrayValue") return (x.values || []).map(dec);
   if(t === "mapValue") return Object.fromEntries(Object.entries(x.fields || {}).map(([k, y]) => [k, dec(y)]));
   return x; };
 const enc = v => v === null || v === undefined ? {nullValue: null} : typeof v === "boolean" ? {booleanValue: v}
   : typeof v === "number" ? {doubleValue: v} : typeof v === "string" ? {stringValue: v}
   : Array.isArray(v) ? {arrayValue: {values: v.map(enc)}} : {mapValue: {fields: Object.fromEntries(Object.entries(v).map(([k, y]) => [k, enc(y)]))}};
-async function call(url, opts, tries){
-  for(let i = 0; i < (tries || 3); i++){
+async function call(url, opts){
+  for(let i = 0; i < 3; i++){
     try { const r = await fetch(url, opts); if(r.status >= 500) throw new Error("server " + r.status); return r; }
-    catch(e){ if(i === (tries || 3) - 1) throw e; await new Promise(z => setTimeout(z, 800 * (i + 1))); }
+    catch(e){ if(i === 2) throw e; await new Promise(z => setTimeout(z, 800 * (i + 1))); }
   }
 }
-const STATES = [["confirmed","✅ Confirmed"],["pending","⏳ Still checking"],["unavailable","⛔ Can't arrange"],["sold","🏷️ Sold / withdrawn"]];
-let req = null, state = {};
+const commit = (fields, mask, transforms) => call(`${BASE}:commit?key=${FB.apiKey}`, {method:"POST", headers:{"Content-Type":"application/json"},
+  body: JSON.stringify({writes: [{update: {name: DOC, fields}, updateMask: {fieldPaths: mask}, updateTransforms: transforms.map(f => ({fieldPath: f, setToServerValue: "REQUEST_TIME"})), currentDocument: {exists: true}}]})});
 
-call(API + DOC + "?key=" + FB.apiKey).then(async r => {
+const SECTIONS = [["new","Needs a viewing time","New homes, or ones still to be scheduled"],["upcoming","Upcoming viewings",""],["offer","Offers","Our offers and the seller's response"],["viewed","Viewed","Share anything new after the viewing"],["closed","Closed","No need to follow up"]];
+const STATES = [["confirmed","✅ Confirmed"],["pending","⏳ Checking"],["sold","🏷️ Sold"]];
+let B = null, state = {}, lastSeen = 0, dirty = false, suggestDraft = {url:"", note:""};
+
+call(`${BASE}/hs_board/${token}?key=${FB.apiKey}`).then(async r => {
   if(r.status === 403 || r.status === 404){ const e = new Error("gone"); e.gone = true; throw e; }
   if(!r.ok) throw new Error("http " + r.status);
-  const d = await r.json();
-  req = dec({mapValue: {fields: d.fields || {}}});
-  const prev = (req.reply && req.reply.homes) || {};
-  (req.homes || []).forEach(h => {
-    const p = prev[h.id] || {};
-    state[h.id] = {state: p.state || (h.booked ? "confirmed" : "pending"), appt: p.appt || (h.booked ? h.appt : ""), view: p.view || ""};
-  });
-  render();
+  const d = await r.json(); B = dec({mapValue: {fields: d.fields || {}}});
+  lastSeen = B.agentSeenAt ? B.agentSeenAt.getTime() : 0;
+  const R = B.replies || {};
+  Object.keys(B.items || {}).forEach(id => { const p = R[id] || {}, it = B.items[id], up = it.status === "upcoming" && it.appt;
+    state[id] = {state: up ? "confirmed" : (p.state || "pending"), appt: up ? it.appt : (p.appt || ""), view: p.view || "", counter: p.counter || null}; });
+  render(); $("bar").hidden = false;
+  commit({}, [], ["agentSeenAt"]).catch(() => {}); // mark this visit
 }).catch(e => {
   root.innerHTML = e && e.gone
-    ? `<h1>This link has expired</h1><p class="sub">Please ask for a fresh link on WhatsApp.</p>`
+    ? `<h1>This link no longer works</h1><p class="sub">Please ask Adrian for the latest link.</p>`
     : `<h1>Couldn't load</h1><p class="sub">Please check your connection and <a href="" onclick="location.reload();return false">try again</a>. If it keeps happening, open the link in Safari or Chrome.</p>`;
 });
 
-function slotOptions(cur){
-  const opts = (req.slots || []).filter(s => s.date).map(s => [s.date + "T" + s.start, s.label]);
-  return `<option value="">Pick one of their times…</option>` + opts.map(([v,l]) => `<option value="${esc(v)}" ${v===cur?"selected":""}>${esc(l)}</option>`).join("");
+const isChanged = it => it.changedAt && Date.parse(it.changedAt) > lastSeen;
+function card(id, it){
+  const st = state[id], ch = isChanged(it), live = it.status !== "closed";
+  return `<div class="box ${ch?"changed":""}" id="h-${esc(id)}">
+    <h3>${esc(it.name)}</h3>
+    <div class="meta">${esc(it.area||"")}${it.url?` · <a href="${esc(it.url)}" target="_blank" rel="noopener">Listing ↗</a>`:""}${it.status==="upcoming"&&it.appt?` · <b>${esc(fmtWhen(it.appt))}</b>`:""}${it.status==="closed"?` · ${esc(it.closedReason||"")}`:""}</div>
+    ${ch && it.changeNote ? `<div class="chg">🔔 ${esc(it.changeNote)}</div>` : ""}
+    ${it.status === "offer" || it.ourOffer ? offerBlock(id, it) : ""}
+    ${live && it.status !== "offer" ? `<div class="opts">${STATES.map(([k,l]) => `<button class="opt" type="button" data-h="${esc(id)}" data-st="${k}" aria-pressed="${st.state===k}">${l}</button>`).join("")}</div>
+      <div ${st.state==="confirmed"?"":"hidden"}><label>Viewing date &amp; time<div class="dt ${st.appt?"":"empty"}"><span>${st.appt?esc(fmtWhen(st.appt)):"Tap to set date &amp; time"}</span><input type="datetime-local" data-appt="${esc(id)}" value="${esc(st.appt)}"></div></label></div>` : ""}
+    ${live ? `<label>Your view on this home (optional)<textarea data-view="${esc(id)}" maxlength="800" placeholder="Condition, seller's flexibility, pros and cons…">${esc(st.view)}</textarea></label>` : (st.view ? `<div class="meta" style="margin-top:8px">Your view: “${esc(st.view)}”</div>` : "")}
+  </div>`;
+}
+function offerBlock(id, it){
+  const o = it.ourOffer, c = state[id].counter || {};
+  return `<div style="margin-top:8px;border-top:1px solid var(--line);padding-top:8px">
+    ${o ? `<div class="offer"><span>Our offer${o.note?`<br><span class="meta">${esc(o.note)}</span>`:""}</span><b>${esc(fmtM(o.amountM))}</b></div>` : `<div class="meta">No offer from us yet.</div>`}
+    ${it.status !== "closed" ? `<label>Seller's counter-offer (S$, optional)<input inputmode="decimal" data-counter="${esc(id)}" value="${typeof c.amountM==="number"?esc(Math.round(c.amountM*1e6).toLocaleString("en-SG")):""}" placeholder="e.g. 2,750,000"></label>
+    <label>Counter-offer note (optional)<input data-cnote="${esc(id)}" maxlength="200" value="${esc(c.note||"")}" placeholder="e.g. seller wants 4-month extension"></label>` : (typeof c.amountM==="number" ? `<div class="offer"><span>Seller's counter</span><b>${esc(fmtM(c.amountM))}</b></div>` : "")}
+  </div>`;
 }
 function render(){
-  const from = req.from || "Adrian";
-  const expires = req.expiresAt && req.expiresAt.toDate ? req.expiresAt.toDate().toLocaleDateString("en-SG",{day:"numeric",month:"short"}) : "";
-  root.innerHTML = `<h1>Hi ${esc(req.agentName || "")} 👋</h1>
-    <p class="sub">${esc(from)} &amp; Shernice would like to view these homes. Confirm the times you can arrange and share your views — it goes straight to them. You can come back and update this until ${esc(expires)}.</p>
-    ${(req.slots||[]).length ? `<div class="box"><h3>When they're free</h3><div class="slots">${req.slots.map(s => `<span class="slot">${esc(s.label)}</span>`).join("")}</div></div>` : ""}
-    ${req.note ? `<div class="box"><h3>Their note</h3>${esc(req.note)}</div>` : ""}
-    ${(req.homes||[]).map((h,i) => { const st = state[h.id]; return `<div class="box">
-      <h2>${i+1}. ${esc(h.name)}${h.booked?`<span class="booked">booked</span>`:""}</h2>
-      <div class="meta">${esc(h.area||"")}${h.booked?` · currently ${esc(fmtWhen(h.appt))} — please reconfirm`:""}${h.url?` · <a href="${esc(h.url)}" target="_blank" rel="noopener">Listing ↗</a>`:""}</div>
-      <div class="opts">${STATES.map(([k,l]) => `<button class="opt" type="button" data-h="${esc(h.id)}" data-st="${k}" aria-pressed="${st.state===k}">${l}</button>`).join("")}</div>
-      <div ${st.state==="confirmed"?"":"hidden"}>
-        ${(req.slots||[]).some(s => s.date) ? `<label>Quick pick<select data-slot="${esc(h.id)}">${slotOptions(st.appt)}</select></label>` : ""}
-        <label>Viewing date &amp; time<input type="datetime-local" data-appt="${esc(h.id)}" value="${esc(st.appt)}"></label>
-      </div>
-      <label>Your view on this home (optional)<textarea data-view="${esc(h.id)}" maxlength="800" placeholder="Condition, seller's flexibility, pros and cons…">${esc(st.view)}</textarea></label>
-    </div>`; }).join("")}
-    <div class="box"><h3>Anything else? (optional)</h3><textarea id="note" maxlength="800" placeholder="A note for both of them">${esc((req.reply && req.reply.note) || "")}</textarea></div>
-    <button class="send" id="send" type="button">Send to ${esc(from)} &amp; Shernice</button>
-    <div id="msg"></div>`;
-  root.querySelectorAll("[data-st]").forEach(b => b.onclick = () => { keepNote(); state[b.dataset.h].state = b.dataset.st; const y = scrollY; render(); scrollTo(0, y); });
-  root.querySelectorAll("[data-slot]").forEach(s => s.onchange = () => { if(!s.value) return; state[s.dataset.slot].appt = s.value; root.querySelector(`[data-appt="${CSS.escape(s.dataset.slot)}"]`).value = s.value; });
-  root.querySelectorAll("[data-appt]").forEach(i => i.onchange = () => { state[i.dataset.appt].appt = i.value; });
-  root.querySelectorAll("[data-view]").forEach(t => t.oninput = () => { state[t.dataset.view].view = t.value; });
-  $("send").onclick = send;
+  const items = Object.entries(B.items || {});
+  const changed = items.filter(([, it]) => isChanged(it));
+  const from = B.from || "Adrian";
+  let h = `<h1>Hi ${esc(B.agentName || "")} 👋</h1><p class="sub">${esc(from)} &amp; Shernice's viewing board. Update times, offers and your views here any time — it goes straight to them. Bookmark this page.</p>`;
+  if(lastSeen && changed.length) h += `<div class="news"><b>Since your last visit</b><ul>${changed.map(([id, it]) => `<li><a href="#h-${esc(id)}" data-jump="${esc(id)}">${esc(it.name)}</a>: ${esc(it.changeNote||"updated")}</li>`).join("")}</ul></div>`;
+  if((B.free||[]).length) h += `<div class="box"><h4>When they're free</h4><div class="slots">${B.free.map(s => `<span class="slot">${esc(s)}</span>`).join("")}</div></div>`;
+  SECTIONS.forEach(([k, title, hint]) => {
+    const list = items.filter(([, it]) => it.status === k).sort((a,b) => (a[1].appt||"").localeCompare(b[1].appt||"") || a[1].name.localeCompare(b[1].name));
+    if(!list.length) return;
+    h += `<h2 class="sec">${esc(title)} <small>${list.length}${hint?" · "+esc(hint):""}</small></h2>` + list.map(([id, it]) => card(id, it)).join("");
+  });
+  if(!items.length) h += `<div class="box">No homes on the board yet.</div>`;
+  h += `<h2 class="sec">Suggest a home <small>a unit you think suits them</small></h2>
+    <div class="box"><label>Listing link<input id="sgUrl" type="url" inputmode="url" placeholder="https://www.propertyguru.com.sg/listing/…" value="${esc(suggestDraft.url)}"></label>
+    <label>Why it suits them (optional)<input id="sgNote" maxlength="200" value="${esc(suggestDraft.note)}"></label>
+    ${(B.suggestions||[]).length ? `<div class="meta" style="margin-top:8px">Already suggested: ${B.suggestions.map(s => esc((s.url||"").replace(/^https?:\/\/(www\.)?/,"").slice(0,40))).join(", ")}</div>` : ""}</div>
+    <h2 class="sec">Note for them <small>optional</small></h2><div class="box"><textarea id="note" maxlength="800" placeholder="Anything else">${esc(B.agentNote||"")}</textarea></div>`;
+  root.innerHTML = h;
+  root.querySelectorAll("[data-st]").forEach(b => b.onclick = () => { state[b.dataset.h].state = b.dataset.st; touch(); const y = scrollY; render(); scrollTo(0, y); });
+  root.querySelectorAll("[data-appt]").forEach(i => i.onchange = () => { state[i.dataset.appt].appt = i.value; touch(); const box = i.parentElement; box.classList.toggle("empty", !i.value); box.querySelector("span").textContent = i.value ? fmtWhen(i.value) : "Tap to set date & time"; });
+  root.querySelectorAll("[data-view]").forEach(t => t.oninput = () => { state[t.dataset.view].view = t.value; touch(); });
+  root.querySelectorAll("[data-counter]").forEach(t => t.oninput = () => { const id = t.dataset.counter; const m = parseMoney(t.value); state[id].counter = Object.assign({}, state[id].counter, {amountM: m}); touch(); });
+  root.querySelectorAll("[data-cnote]").forEach(t => t.oninput = () => { const id = t.dataset.cnote; state[id].counter = Object.assign({}, state[id].counter, {note: t.value}); touch(); });
+  ["sgUrl","sgNote"].forEach(k => { $(k).oninput = () => { suggestDraft[k === "sgUrl" ? "url" : "note"] = $(k).value; touch(); }; });
+  $("note").oninput = () => { B.agentNote = $("note").value; touch(); };
 }
-function keepNote(){ const n = $("note"); if(n){ req.reply = Object.assign({}, req.reply, {note: n.value}); } }
-async function send(){
-  const missing = (req.homes||[]).filter(h => state[h.id].state === "confirmed" && !state[h.id].appt);
-  if(missing.length){ $("msg").innerHTML = `<p class="err">Please add a date and time for ${esc(missing.map(h => h.name).join(", "))}, or choose another option.</p>`; return; }
-  const btn = $("send"); btn.disabled = true; btn.textContent = "Sending…";
-  const homes = {};
-  Object.entries(state).forEach(([id, s]) => { homes[id] = {state: s.state, appt: s.state === "confirmed" ? s.appt : "", view: (s.view||"").trim().slice(0,800)}; });
+function touch(){ dirty = true; $("send").disabled = false; $("msg").textContent = ""; }
+$("send").onclick = async () => {
+  const missing = Object.entries(state).filter(([id, s]) => s.state === "confirmed" && !s.appt && (B.items[id]||{}).status !== "closed" && (B.items[id]||{}).status !== "offer");
+  if(missing.length){ $("msg").innerHTML = `<span class="err">Add a date &amp; time for ${esc(missing.map(([id]) => B.items[id].name).join(", "))}.</span>`; return; }
+  const sg = suggestDraft.url.trim();
+  if(sg && !/^https?:\/\/\S+\.\S+/.test(sg)){ $("msg").innerHTML = `<span class="err">The suggested link should start with https://</span>`; return; }
+  const btn = $("send"); btn.disabled = true; btn.textContent = "Saving…";
+  const replies = {};
+  Object.entries(state).forEach(([id, s]) => {
+    const r = {state: s.state, appt: s.state === "confirmed" ? (s.appt||"") : "", view: (s.view||"").trim().slice(0,800)};
+    if(s.counter && typeof s.counter.amountM === "number" && s.counter.amountM > 0.3) r.counter = {amountM: s.counter.amountM, note: (s.counter.note||"").trim().slice(0,200)};
+    replies[id] = r;
+  });
+  const suggestions = (B.suggestions || []).slice();
+  if(sg) suggestions.push({url: sg, note: suggestDraft.note.trim().slice(0,200), at: new Date().toISOString()});
   try {
-    const reply = {homes, note: ($("note").value||"").trim().slice(0,800)};
-    const r = await call(API + `projects/${FB.projectId}/databases/(default)/documents:commit?key=` + FB.apiKey, {method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({writes: [{update: {name: DOC, fields: {reply: enc(reply)}}, updateMask: {fieldPaths: ["reply"]},
-        updateTransforms: [{fieldPath: "replyAt", setToServerValue: "REQUEST_TIME"}], currentDocument: {exists: true}}]})});
+    const r = await commit({replies: enc(replies), agentNote: enc((B.agentNote||"").trim().slice(0,800)), suggestions: enc(suggestions)}, ["replies","agentNote","suggestions"], ["replyAt"]);
     if(!r.ok) throw new Error("http " + r.status);
-    $("msg").innerHTML = `<div class="ok">Thank you! Sent to them. You can change anything and send again any time.</div>`;
+    B.suggestions = suggestions; suggestDraft = {url:"", note:""}; dirty = false;
+    if(sg) render();
+    $("msg").innerHTML = `<span class="ok">Saved — ${esc(B.from || "Adrian")} &amp; Shernice can see it now.</span>`;
+    btn.textContent = "Save changes";
   } catch(e){
-    $("msg").innerHTML = `<p class="err">Couldn't send — please check your connection and try again.</p>`;
+    $("msg").innerHTML = `<span class="err">Couldn't save — check your connection and try again.</span>`;
+    btn.disabled = false; btn.textContent = "Try again";
   }
-  btn.disabled = false; btn.textContent = "Send again";
-}
+};
+window.addEventListener("beforeunload", e => { if(dirty){ e.preventDefault(); e.returnValue = ""; } });
 })();
 </script>
 </body>

@@ -365,16 +365,13 @@ function start(){
   $("tabs").hidden = false; $("fab").hidden = false;
   render();
   unsubs.push(db.collection("hs_units").onSnapshot(s => {
-    units = s.docs.map(d => Object.assign({id:d.id}, d.data())); if(!s.metadata.fromCache){ unitsLoaded = true; applyAll(); }
+    units = s.docs.map(d => Object.assign({id:d.id}, d.data())); if(!s.metadata.fromCache){ unitsLoaded = true; syncAll(); }
     render(); renderSheet();
   }, e => { $("app").innerHTML = `<div class="empty">Couldn't load the shortlist: ${esc(e.message)}</div>`; }));
   unsubs.push(db.collection("hs_requests").orderBy("createdAt","desc").limit(8).onSnapshot(s => {
     reqs = s.docs.map(d => Object.assign({id:d.id}, d.data())); if(sheet && sheet.type === "add") renderSheet();
   }, ()=>{}));
-  unsubs.push(db.doc("hs_meta/agent").onSnapshot(s => { agent = s.exists ? s.data() : null; NAME.agent = AGENT(); render(); }, ()=>{}));
-  unsubs.push(db.collection("hs_agent").orderBy("createdAt","desc").limit(10).onSnapshot(s => {
-    asks = s.docs.map(d => Object.assign({id:d.id}, d.data())); applyAll(); render(); if(sheet && (sheet.type === "ask" || sheet.type === "reply")) renderSheet();
-  }, ()=>{}));
+  unsubs.push(db.doc("hs_meta/agent").onSnapshot(s => { const prev = agent && agent.boardToken; agent = s.exists ? s.data() : null; NAME.agent = AGENT(); if((agent && agent.boardToken) !== prev) watchBoard(); render(); }, ()=>{}));
   unsubs.push(db.doc("hs_meta/places").onSnapshot(s => { places = (s.exists && s.data().items) || []; render(); if(sheet && sheet.type === "unit") renderSheet(); }, ()=>{}));
   unsubs.push(db.doc("hs_meta/worker").onSnapshot(s => { meta = s.exists ? s.data() : null; if(sheet && sheet.type === "add") renderSheet(); }, ()=>{}));
 }
@@ -460,15 +457,14 @@ function viewTop(){
   const top = ranked.slice(0,5);
   const unrated = active.filter(u => !ratingOf(u, me.key) && !noped(u, me.key));
   let h = `<h2 class="sec">Our Top 5 <small>by combined hearts</small></h2>`;
-  const fresh = asks.find(a => a.replyAt && millis(a.replyAt) > ((a.seenReplyBy||{})[me.key]||0));
-  if(fresh) h += `<button class="banner" type="button" data-reply="${esc(fresh.id)}">💬 <span class="grow"><b>${esc(AGENT())} replied</b> ${esc(ago(new Date(millis(fresh.replyAt)).toISOString()))} — ${esc(replySummary(fresh))}</span>›</button>`;
+  if(boardFresh()) h += `<button class="banner" type="button" data-reply="1">💬 <span class="grow"><b>${esc(AGENT())} updated his board</b> ${esc(ago(new Date(millis(board.replyAt)).toISOString()))} — ${esc(boardSummary())}</span>›</button>`;
   if(!top.length) h += `<div class="empty">No hearts yet. Open <b>Homes</b> and give each place 1–5 ♥ — your Top 5 builds itself.</div>`;
   else {
     const p = [top[1], top[0], top[2]];
     h += `<div class="podium">${p.map((u,i) => u ? `<button class="pod r${[2,1,3][i]}" type="button" data-open="${esc(u.id)}"><span class="rk">${[2,1,3][i]}</span><span class="nm">${esc(u.name)}</span><span class="sc">♥ ${score(u)}/10</span><span class="pr">${esc(money(u.askingM))}</span></button>` : `<span></span>`).join("")}</div>`;
     h += `<div class="list" style="gap:8px">${top.slice(3).map((u,i) => `<button class="rankrow" type="button" data-open="${esc(u.id)}"><span class="rk">${i+4}</span><span class="grow"><span class="nm">${esc(u.name)}</span><br><span style="color:var(--muted);font-size:13px">${esc(money(u.askingM))} · ${esc(u.format||"")}</span></span><span style="color:var(--rose);font-weight:700">♥ ${score(u)}</span></button>`).join("")}</div>`;
   }
-  if(top.length && agent && agent.phone) h += `<div style="margin-top:12px"><button class="btn primary" type="button" id="askBtn" style="width:100%;justify-content:center;padding:11px">💬 Ask ${esc(AGENT())} about these homes</button></div>`;
+  if(top.length && agent && agent.phone) h += `<div style="margin-top:12px"><button class="btn primary" type="button" id="askBtn" style="width:100%;justify-content:center;padding:11px">💬 ${esc(AGENT())}'s board</button></div>`;
   const dis = active.filter(u => KEYS.every(k => ratingOf(u,k) > 0) && Math.abs(ratingOf(u,KEYS[0]) - ratingOf(u,KEYS[1])) >= 2);
   if(dis.length){
     h += `<h2 class="sec">Let's talk about these <small>you rated them differently</small></h2><div class="disagree">${dis.map(u => `<button class="dz" type="button" data-open="${esc(u.id)}"><span class="nm">${esc(u.name)}</span><span class="sc">${KEYS.map(k => `${esc(NAME[k])} <span style="color:var(--rose)">${"♥".repeat(ratingOf(u,k))}</span>`).join(" · ")}</span></button>`).join("")}</div>`;
@@ -573,9 +569,10 @@ function renderSheet(fresh){
       <div style="margin-top:10px">${bar(r)}</div>
       <div class="hearts" style="margin-top:12px">${KEYS.map(k => heartsRow(r,k)).join("")}</div></div>
     <div class="box"><h4>Viewing</h4>
-      <div class="form"><label>Status<select id="stSel">${STATUSES.map(s => `<option value="${s}" ${s===st?"selected":""}>${esc(STATUS_LABEL[s])}</option>`).join("")}</select></label>
-      <label>Date & time<input id="apptIn" type="datetime-local" value="${esc(r.appt||"")}" ${st==="Booked"?"":"disabled"} title="${st==="Booked"?"":"Set status to Viewing booked to pick a time"}"></label>
+      <div class="form"><label class="w">Status<select id="stSel">${STATUSES.map(s => `<option value="${s}" ${s===st?"selected":""}>${esc(STATUS_LABEL[s])}</option>`).join("")}</select></label>
+      <label class="w">Date & time<input id="apptIn" type="datetime-local" value="${esc(r.appt||"")}" ${st==="Booked"?"":"disabled"} title="${st==="Booked"?"":"Set status to Viewing booked to pick a time"}"></label>
       <label class="w">Agent (name & phone)<input id="agentIn" value="${esc(r.agent||"")}" placeholder="e.g. Matthew Tan 8132 8152"></label></div></div>
+    ${["Booked","Viewed","Offer"].includes(st) || r.offer || r.counter ? offerBox(r) : ""}
     <div class="box"><h4>Loves & concerns</h4>
       <div class="chips">${(r.loves||[]).map((t,i) => `<span class="chip love">${esc(t)}<button class="x" type="button" data-untag="loves" data-i="${i}" aria-label="Remove">×</button></span>`).join("")}
       ${autoConcerns(r).map(t => `<span class="chip concern">${esc(t)}</span>`).join("")}
@@ -617,6 +614,7 @@ function renderSheet(fresh){
   // wire
   $("stSel").onchange = e => save(r.id, {status:e.target.value, ...(["Unviewed","Rejected"].includes(e.target.value) ? {appt:""} : {})}, "Status updated");
   $("apptIn").onchange = e => save(r.id, {appt:e.target.value}, "Viewing saved");
+  wireOffer(r);
   $("agentIn").onchange = e => save(r.id, {agent:e.target.value.trim()}, "Saved");
   const addTag = kindKey => { const v = $("tagIn").value.trim(); if(!v) return; $("tagIn").value = ""; save(r.id, {[kindKey]: FV.arrayUnion(v)}); };
   $("tagForm").onsubmit = ev => { ev.preventDefault(); addTag("loves"); };
@@ -647,65 +645,32 @@ function renderAddSheet(){
   $("rescanBtn").onclick = () => q({type:"rescan"}, "Claude will scan for new homes");
 }
 
-/* ---------- Agent (WhatsApp) ---------- */
-let agent = null, asks = [], unitsLoaded = false;
+/* ---------- Andrew's board (permanent agent page) ---------- */
+// One long-lived board per agent at hs_board/{token}. The app owns: items, free,
+// appliedReplies, appliedSuggestions, seenBy. The agent's page may only write:
+// replies, suggestions, agentNote, replyAt, agentSeenAt (enforced by the rules).
+let agent = null, board = null, unitsLoaded = false, unsubBoard = null;
 const AGENT = () => (agent && agent.name) || "Agent";
 const millis = t => !t ? 0 : typeof t.toMillis === "function" ? t.toMillis() : typeof t === "number" ? t : (Date.parse(t) || 0);
 const ymd = d => d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
-function quickSlots(){
-  const out = [], d0 = new Date(); d0.setHours(0,0,0,0);
-  for(let i = 0; i <= 16 && out.length < 12; i++){
-    const x = new Date(d0.getTime() + i*864e5); if(x.getDay() !== 6 && x.getDay() !== 0) continue;
-    const day = x.toLocaleDateString("en-SG",{weekday:"short",day:"numeric",month:"short"});
-    [["Morning","10:00","10am–12pm"],["Afternoon","14:00","2–5pm"],["Evening","18:30","6:30–8pm"]].forEach(([n,st,lab]) => out.push({label:`${day} · ${n} (${lab})`, date:ymd(x), start:st}));
-  }
-  return out;
+const boardLink = () => agent && agent.boardToken ? location.origin + location.pathname.replace(/[^/]*$/, "") + "agent.html#" + agent.boardToken : "";
+const stable = v => JSON.stringify(v, (k, x) => x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.keys(x).sort().map(y => [y, x[y]])) : x);
+const fmtM = m => typeof m === "number" ? "S$" + (m >= 1 ? m.toFixed(3).replace(/0+$/,"").replace(/\.$/,"") + "M" : Math.round(m*1000) + "k") : "—";
+function parseMoney(s){ // "2.65", "2.65M", "2,650,000", "S$2.6m" -> millions
+  const t = String(s||"").replace(/[S$,\s]/gi, "").toLowerCase(); if(!t) return null;
+  let n = parseFloat(t); if(isNaN(n)) return null;
+  if(/k$/.test(t)) n = n/1000; else if(!/m$/.test(t) && n > 1000) n = n/1e6;
+  return Math.round(n*1e4)/1e4;
 }
-function randToken(n){ const a = new Uint8Array(n), c = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"; crypto.getRandomValues(a); return Array.from(a, b => c[b % c.length]).join(""); }
-function topFive(){
-  return units.filter(u => u.status !== "Rejected" && score(u) > 0).sort((a,b) => score(b)-score(a) || ratedBy(b)-ratedBy(a) || (a.distKm??99)-(b.distKm??99)).slice(0,5);
+function watchBoard(){
+  if(unsubBoard){ unsubBoard(); unsubBoard = null; }
+  if(!agent || !agent.boardToken){ board = null; return; }
+  unsubBoard = db.collection("hs_board").doc(agent.boardToken).onSnapshot(s => {
+    board = s.exists ? s.data() : null; syncAll(); render(); if(sheet && (sheet.type === "ask" || sheet.type === "reply")) renderSheet();
+  }, () => {});
 }
-function openAsk(){
-  const top = topFive();
-  sheet = {type:"ask", sel:new Set(top.map(u => u.id)), slots:[], custom:"", note:""};
-  renderSheet(true);
-}
-function replySummary(a){
-  const hs = Object.values((a.reply||{}).homes||{});
-  const c = hs.filter(x => x.state === "confirmed").length, v = hs.filter(x => (x.view||"").trim()).length;
-  return [c ? `${c} viewing${c>1?"s":""} confirmed` : "", v ? `views on ${v} home${v>1?"s":""}` : "", (a.reply||{}).note ? "a note" : ""].filter(Boolean).join(", ") || "tap to see";
-}
-function renderAskSheet(){
-  const top = topFive(), topIds = new Set(top.map(u => u.id));
-  const others = units.filter(u => u.status !== "Rejected" && !topIds.has(u.id) && (score(u) > 0 || u.status === "Booked")).sort((a,b) => score(b)-score(a));
-  const row = u => `<label class="pick"><input type="checkbox" data-asksel="${esc(u.id)}" ${sheet.sel.has(u.id)?"checked":""}><span class="grow"><b>${esc(u.name)}</b><br><span style="color:var(--muted);font-size:12.5px">${esc(money(u.askingM))} · ${u.status==="Booked"&&u.appt?"booked "+esc(fmtWhen(u.appt))+" — will ask to reconfirm":esc(STATUS_LABEL[u.status]||"")}</span></span><span style="color:var(--rose);font-weight:700;font-size:13px">♥ ${score(u)}</span></label>`;
-  const qs = quickSlots(), chosen = new Set(sheet.slots.map(s => s.label));
-  const selUnits = [...sheet.sel].map(id => units.find(u => u.id === id)).filter(Boolean);
-  const needSlots = selUnits.some(u => !(u.status === "Booked" && u.appt));
-  const can = selUnits.length && (!needSlots || sheet.slots.length);
-  const past = asks.slice(0,5).map(a => `<div class="req"><span class="pill ${a.replyAt?"st-Offer":"st-Booked"}">${a.replyAt?"replied":"waiting"}</span><span class="grow" style="min-width:0">${esc((a.homes||[]).map(x => x.name).join(", "))}<br><span style="color:var(--muted)">${esc(NAME[a.by]||"")} · sent ${esc(ago(a.createdAt))}${a.replyAt?" · replied "+esc(ago(new Date(millis(a.replyAt)).toISOString())):""}</span></span>${a.replyAt?`<button class="btn sm" type="button" data-reply="${esc(a.id)}">See reply</button>`:""}</div>`).join("");
-  $("sheetRoot").innerHTML = `<div class="scrim" id="scrim"></div><div class="sheet" role="dialog" aria-modal="true" aria-label="Ask ${esc(AGENT())}">
-    <div class="hd"><h3>Ask ${esc(AGENT())}</h3><button class="close" id="closeSheet" type="button" aria-label="Close">×</button></div>
-    <div class="sc" id="sheetScroll">
-      <div class="box"><h4>Homes</h4>${top.map(row).join("")}${others.length?`<details style="margin-top:6px"><summary style="font-size:13px;color:var(--muted);cursor:pointer">Add other homes (${others.length})</summary>${others.map(row).join("")}</details>`:""}</div>
-      <div class="box"><h4>When we're free</h4><div class="chips">${qs.map((s,i) => `<button class="slot" type="button" data-qslot="${i}" aria-pressed="${chosen.has(s.label)}">${esc(s.label)}</button>`).join("")}</div>
-        ${sheet.slots.filter(s => !s.date).map(s => `<span class="chip" style="margin-top:8px;display:inline-flex">${esc(s.label)}<button class="x" type="button" data-rmslot="${esc(s.label)}" aria-label="Remove">×</button></span>`).join(" ")}
-        <form class="addtag" id="slotForm"><input id="slotIn" placeholder="Or type your own, e.g. Tue 21 Oct after 7pm" maxlength="60" autocomplete="off"><button class="btn sm" type="submit">Add</button></form>
-        ${needSlots && !sheet.slots.length ? `<p style="font-size:12.5px;color:var(--rose);margin:8px 0 0">Pick at least one time for the homes that aren't booked yet.</p>` : ""}</div>
-      <div class="box"><h4>Note (optional)</h4><div class="form"><label class="w"><textarea id="askNote" maxlength="400" placeholder="Anything else for ${esc(AGENT())}">${esc(sheet.note)}</textarea></label></div></div>
-      <button class="btn primary" type="button" id="sendAsk" style="width:100%;justify-content:center;padding:12px;margin-top:12px" ${can?"":"disabled"}>Send on WhatsApp</button>
-      <p style="font-size:12px;color:var(--muted);margin:8px 2px 0">WhatsApp opens with the message ready for you to send. It includes a private link where ${esc(AGENT())} can confirm times and share his views; they come straight back into the app. He only sees these homes, their listing links and your times.</p>
-      ${past?`<div class="box"><h4>Recent requests</h4>${past}</div>`:""}
-    </div></div>`;
-  $("scrim").onclick = closeSheet; $("closeSheet").onclick = closeSheet;
-  $("askNote").oninput = e => { sheet.note = e.target.value; };
-  $("slotForm").onsubmit = ev => { ev.preventDefault(); const v = $("slotIn").value.trim(); if(!v) return; if(!sheet.slots.some(s => s.label === v)) sheet.slots.push({label:v, date:"", start:""}); keepScroll(renderAskSheet); };
-  document.querySelectorAll("[data-asksel]").forEach(cb => cb.onchange = () => { cb.checked ? sheet.sel.add(cb.dataset.asksel) : sheet.sel.delete(cb.dataset.asksel); keepScroll(renderAskSheet); });
-  document.querySelectorAll("[data-qslot]").forEach(b => b.onclick = () => { const s = qs[+b.dataset.qslot]; const i = sheet.slots.findIndex(x => x.label === s.label); i >= 0 ? sheet.slots.splice(i,1) : sheet.slots.push(s); keepScroll(renderAskSheet); });
-  document.querySelectorAll("[data-rmslot]").forEach(b => b.onclick = () => { sheet.slots = sheet.slots.filter(s => s.label !== b.dataset.rmslot); keepScroll(renderAskSheet); });
-  $("sendAsk").onclick = sendAsk;
-}
-function keepScroll(fn){ const sc = $("sheetScroll"), y = sc ? sc.scrollTop : 0; fn(); const s2 = $("sheetScroll"); if(s2) s2.scrollTop = y; }
+
+/* REST writes (signed in): reliable in the home-screen app, unlike waiting on the SDK. */
 function fsEnc(v){
   if(v && typeof v.toMillis === "function") return {timestampValue: new Date(v.toMillis()).toISOString()};
   if(v === null || v === undefined) return {nullValue: null};
@@ -715,70 +680,108 @@ function fsEnc(v){
   if(Array.isArray(v)) return {arrayValue: {values: v.map(fsEnc)}};
   return {mapValue: {fields: Object.fromEntries(Object.entries(v).map(([k, x]) => [k, fsEnc(x)]))}};
 }
-async function saveAskREST(token, doc){
+const fp = path => path.split(".").map(s => /^[A-Za-z_][A-Za-z0-9_]*$/.test(s) ? s : "`" + s.replace(/`/g, "\\`") + "`").join(".");
+function nest(obj){ // {"items.a.b": 1} -> {items:{a:{b:1}}}
+  const out = {};
+  Object.entries(obj).forEach(([k, v]) => { const ps = k.split("."); let o = out; ps.slice(0,-1).forEach(p => { o = o[p] = o[p] || {}; }); o[ps[ps.length-1]] = v; });
+  return out;
+}
+async function restPatch(docPath, flat, opts){
   const idToken = await auth.currentUser.getIdToken();
-  const url = `https://firestore.googleapis.com/v1/projects/${CFG.firebase.projectId}/databases/(default)/documents/hs_agent/${token}`;
+  const keys = Object.keys(flat);
+  const mask = keys.map(k => "updateMask.fieldPaths=" + encodeURIComponent(fp(k))).join("&");
+  const url = `https://firestore.googleapis.com/v1/projects/${CFG.firebase.projectId}/databases/(default)/documents/${docPath}` + (opts && opts.create ? "" : "?" + mask);
+  const body = {fields: Object.fromEntries(Object.entries(nest(Object.fromEntries(keys.filter(k => flat[k] !== undefined).map(k => [k, flat[k]])))).map(([k, v]) => [k, fsEnc(v)]))};
   const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 15000);
   try {
-    const r = await fetch(url, {method:"PATCH", signal:ctl.signal, headers:{"Content-Type":"application/json", "Authorization":"Bearer " + idToken},
-      body: JSON.stringify({fields: Object.fromEntries(Object.entries(doc).map(([k, v]) => [k, fsEnc(v)]))})});
+    const r = await fetch(url, {method:"PATCH", signal:ctl.signal, headers:{"Content-Type":"application/json", "Authorization":"Bearer " + idToken}, body: JSON.stringify(body)});
     if(!r.ok) throw new Error("http " + r.status);
   } finally { clearTimeout(timer); }
 }
-async function sendAsk(){
-  const btn = $("sendAsk"); btn.disabled = true; btn.textContent = "Preparing…";
-  const homes = [...sheet.sel].map(id => units.find(u => u.id === id)).filter(Boolean).map(u => ({id:u.id, name:u.name||"", area:(u.area||"").split("·")[0].trim(), url:u.url||"", booked:u.status==="Booked" && !!u.appt, appt:u.status==="Booked" ? (u.appt||"") : ""}));
+async function restDelete(docPath){
+  const idToken = await auth.currentUser.getIdToken();
+  await fetch(`https://firestore.googleapis.com/v1/projects/${CFG.firebase.projectId}/databases/(default)/documents/${docPath}`, {method:"DELETE", headers:{"Authorization":"Bearer " + idToken}});
+}
+function randToken(n){ const a = new Uint8Array(n), c = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"; crypto.getRandomValues(a); return Array.from(a, b => c[b % c.length]).join(""); }
+async function ensureBoard(){
+  if(agent && agent.boardToken && board) return agent.boardToken;
   const token = randToken(32);
-  const doc = {createdAt:new Date().toISOString(), expiresAt:firebase.firestore.Timestamp.fromMillis(Date.now() + 14*864e5), by:me.key, from:NAME[me.key], agentName:AGENT(), homes, slots:sheet.slots.map(s => ({label:s.label, date:s.date||"", start:s.start||""})), note:(sheet.note||"").trim()};
-  // Save over plain HTTPS (with your sign-in token) so it can't hang on a sleepy
-  // database connection in the home-screen app; give up after 15 seconds.
-  try { await saveAskREST(token, doc); }
-  catch(e){ toast("Couldn't prepare the request — check your connection and try again"); btn.disabled = false; btn.textContent = "Send on WhatsApp"; return; }
-  const link = location.origin + location.pathname.replace(/[^/]*$/, "") + "agent.html#" + token;
-  const toBook = homes.filter(x => !x.booked), toConfirm = homes.filter(x => x.booked);
-  const L = [];
-  L.push(`Hi ${AGENT()}, it's ${NAME[me.key]} here 🙂`);
-  if(toBook.length){ L.push("", `${NAME.shernice ? "Shernice and I" : "We"} would like to view ${toBook.length > 1 ? "these homes" : "this home"}:`); toBook.forEach((x,i) => L.push(`${i+1}. ${x.name}${x.area?" – "+x.area:""}${x.url?"\n   "+x.url:""}`)); }
-  if(toConfirm.length){ L.push("", "Already booked – could you please reconfirm:"); toConfirm.forEach(x => L.push(`• ${x.name} – ${fmtWhen(x.appt)}`)); }
-  if(doc.slots.length){ L.push("", "We're free:"); doc.slots.forEach(s => L.push(`• ${s.label}`)); }
-  if(doc.note) L.push("", doc.note);
-  L.push("", "Could you arrange the viewings and share your views on each home? You can reply here, or use this link to confirm times and add your thoughts – it updates our list directly:", link, "", "Thanks!");
-  const phone = String(agent.phone || "").replace(/\D/g, "");
-  closeSheet();
-  location.href = "https://wa.me/" + phone + "?text=" + encodeURIComponent(L.join("\n"));
+  await restPatch("hs_board/" + token, {active:true, agentName:AGENT(), from:NAME[me.key], createdAt:new Date().toISOString(), items:{}, free:[], replies:{}, appliedReplies:{}, suggestions:[], appliedSuggestions:0}, {create:true});
+  await restPatch("hs_meta/agent", {boardToken: token});
+  agent = Object.assign({}, agent, {boardToken: token});
+  return token;
 }
-async function addComment(id, by, text){
-  const at = new Date().toISOString();
-  await unitRef(id).collection("comments").add({by, text, at});
-  await unitRef(id).update({commentCount:FV.increment(1), lastComment:{by, text:text.slice(0,140), at}});
+
+/* App -> board: keep each shared home's section, time and our offer in step with the app. */
+function deriveItem(u){
+  if(!u) return {status:"closed", closedReason:"Removed from our list", appt:""};
+  if(u.nopeRejected || u.status === "Rejected") return {status:"closed", closedReason:"No longer interested", appt:""};
+  if(/sold|withdrawn/i.test(u.listingState || "")) return {status:"closed", closedReason:"Sold / withdrawn", appt:""};
+  if(u.status === "Offer") return {status:"offer", closedReason:"", appt:u.appt||""};
+  if(u.status === "Viewed") return {status:"viewed", closedReason:"", appt:u.appt||""};
+  if(u.status === "Booked" && u.appt) return {status:"upcoming", closedReason:"", appt:u.appt};
+  return {status:"new", closedReason:"", appt:""};
 }
-const applying = new Set();
-// Apply an agent reply: everything (bookings, comments, "applied" marker) is written
-// in ONE transaction, so it either all lands or none of it does and it retries later.
-async function applyReply(a){
-  const rAt = millis(a.replyAt);
-  if(!unitsLoaded || !rAt || (a.appliedAt||0) >= rAt || applying.has(a.id)) return;
-  applying.add(a.id);
-  const ref = db.collection("hs_agent").doc(a.id);
+const SECTION = {new:"Needs a time", upcoming:"Upcoming viewings", viewed:"Viewed", offer:"Offers", closed:"Closed"};
+let syncing = false;
+async function syncBoardFromApp(){
+  if(!board || !agent || !agent.boardToken || !unitsLoaded || syncing) return;
+  const flat = {}, now = new Date().toISOString(), replies = board.replies || {};
+  Object.entries(board.items || {}).forEach(([id, it]) => {
+    const u = units.find(z => z.id === id), d = deriveItem(u);
+    const off = u && u.offer && typeof u.offer.amountM === "number" ? {amountM:u.offer.amountM, note:u.offer.note||"", at:u.offer.at||""} : null;
+    const notes = [];
+    if(d.status !== it.status){
+      const fromAgent = d.status === "upcoming" && (replies[id]||{}).appt === d.appt;
+      if(!fromAgent) notes.push(d.status === "closed" ? d.closedReason : "Moved to " + SECTION[d.status]);
+    } else if(d.status === "upcoming" && d.appt !== it.appt && (replies[id]||{}).appt !== d.appt) notes.push("Viewing time changed to " + fmtWhen(d.appt));
+    if(stable(off) !== stable(it.ourOffer || null) && off) notes.push(`Our offer: ${fmtM(off.amountM)}${off.note ? " — " + off.note : ""}`);
+    const changed = d.status !== it.status || d.appt !== (it.appt||"") || d.closedReason !== (it.closedReason||"") || stable(off) !== stable(it.ourOffer || null);
+    if(!changed) return;
+    Object.assign(flat, {[`items.${id}.status`]:d.status, [`items.${id}.appt`]:d.appt, [`items.${id}.closedReason`]:d.closedReason, [`items.${id}.ourOffer`]:off});
+    if(notes.length){ flat[`items.${id}.changedAt`] = now; flat[`items.${id}.changeNote`] = notes.join(" · "); }
+  });
+  if(!Object.keys(flat).length) return;
+  syncing = true;
+  try { await restPatch("hs_board/" + agent.boardToken, flat); } catch(e){ console.warn("board sync later:", e.message); }
+  syncing = false;
+}
+
+/* Board -> app: apply Andrew's replies, counter-offers and suggestions, once, atomically. */
+const RSTATE = {confirmed:"✅ Confirmed", pending:"⏳ Still checking", sold:"🏷️ Sold / withdrawn"};
+let applyingBoard = false;
+async function applyBoardReplies(){
+  if(!board || !unitsLoaded || applyingBoard || !agent || !agent.boardToken) return;
+  const pendingReplies = stable(board.replies || {}) !== stable(board.appliedReplies || {});
+  const pendingSugg = (board.suggestions || []).length > (board.appliedSuggestions || 0);
+  if(!pendingReplies && !pendingSugg) return;
+  applyingBoard = true;
+  const ref = db.collection("hs_board").doc(agent.boardToken);
   try {
     await db.runTransaction(async tx => {
-      const s = await tx.get(ref); const d = s.data() || {}; const r = millis(d.replyAt);
-      if(!r || (d.appliedAt||0) >= r) return;
-      const homes = (d.reply||{}).homes || {}, prevH = (d.appliedReply||{}).homes || {};
-      const ids = Object.keys(homes).filter(id => units.some(z => z.id === id));
+      const s = await tx.get(ref); const d = s.data() || {};
+      const R = d.replies || {}, P = d.appliedReplies || {}, sugg = d.suggestions || [], done = d.appliedSuggestions || 0;
+      if(stable(R) === stable(P) && sugg.length <= done) return;
+      const ids = Object.keys(R).filter(id => units.some(z => z.id === id) && stable(R[id]) !== stable(P[id] || {}));
       const snaps = await Promise.all(ids.map(id => tx.get(unitRef(id))));
       const now = new Date().toISOString();
       snaps.forEach((us, i) => {
         if(!us.exists) return;
-        const id = ids[i], u = us.data(), x = homes[id], p = prevH[id] || {}, upd = {}, lines = [];
+        const id = ids[i], u = us.data(), x = R[id] || {}, p = P[id] || {}, upd = {}, lines = [];
         if(x.state === "confirmed" && x.appt && (x.appt !== p.appt || p.state !== "confirmed")){
-          upd.status = (u.status === "Viewed" || u.status === "Offer") ? u.status : "Booked"; upd.appt = x.appt;
-          upd.agent = AGENT() + (agent && agent.phone ? " " + String(agent.phone).replace(/^65/, "") : "");
+          if(u.status !== "Viewed" && u.status !== "Offer") upd.status = "Booked";
+          upd.appt = x.appt; upd.agent = AGENT() + (agent.phone ? " " + String(agent.phone).replace(/^65/, "") : "");
           lines.push("Viewing confirmed for " + fmtWhen(x.appt) + ".");
         }
-        if(x.state === "unavailable" && p.state !== "unavailable") lines.push("Can't arrange a viewing for now.");
         if(x.state === "sold" && p.state !== "sold"){ upd.listingState = "Sold (per agent)"; upd.updatedAt = now; upd.updateNote = AGENT() + " says this unit is sold or withdrawn"; lines.push("This unit is sold or withdrawn."); }
         if((x.view||"").trim() && x.view !== p.view) lines.push(x.view.trim());
+        const c = x.counter || {}, pc = p.counter || {};
+        if(typeof c.amountM === "number" && (c.amountM !== pc.amountM || (c.note||"") !== (pc.note||""))){
+          upd.counter = {amountM:c.amountM, note:c.note||"", at:now};
+          upd.updatedAt = now; upd.updateNote = `Seller counter-offer: ${fmtM(c.amountM)}`;
+          upd.offerHistory = FV.arrayUnion({kind:"counter", amountM:c.amountM, at:now, by:"agent"});
+          lines.push(`Seller's counter-offer: ${fmtM(c.amountM)}${c.note ? " — " + c.note : ""}`);
+        }
         if(lines.length){
           const text = lines.join(" ");
           tx.set(unitRef(id).collection("comments").doc(), {by:"agent", text, at:now});
@@ -786,31 +789,161 @@ async function applyReply(a){
         }
         if(Object.keys(upd).length) tx.update(unitRef(id), upd);
       });
-      tx.update(ref, {appliedAt:r, appliedReply:d.reply||{}});
+      sugg.slice(done).forEach(sg => {
+        if(sg && sg.url) tx.set(db.collection("hs_requests").doc(), {type:"add", url:sg.url, note:sg.note||"", suggestedBy:AGENT(), by:"agent", status:"queued", createdAt:now});
+      });
+      tx.update(ref, {appliedReplies:R, appliedSuggestions:sugg.length});
     });
-  } catch(e){ console.warn("Agent reply not applied yet:", e && e.message); }
-  applying.delete(a.id);
+  } catch(e){ console.warn("Board reply not applied yet:", e && e.message); }
+  applyingBoard = false;
 }
-const applyAll = () => asks.forEach(applyReply);
-document.addEventListener("visibilitychange", () => { if(document.visibilityState === "visible") applyAll(); });
-function openReply(id){
-  const a = asks.find(x => x.id === id); if(!a) return;
-  sheet = {type:"reply", id};
-  if(a.replyAt) db.collection("hs_agent").doc(id).update({["seenReplyBy." + me.key]: millis(a.replyAt)}).catch(()=>{});
+const syncAll = () => { applyBoardReplies(); syncBoardFromApp(); };
+document.addEventListener("visibilitychange", () => { if(document.visibilityState === "visible") syncAll(); });
+
+/* Free-time quick picks */
+function quickSlots(){
+  const out = [], d0 = new Date(); d0.setHours(0,0,0,0);
+  for(let i = 0; i <= 16 && out.length < 12; i++){
+    const x = new Date(d0.getTime() + i*864e5); if(x.getDay() !== 6 && x.getDay() !== 0) continue;
+    const day = x.toLocaleDateString("en-SG",{weekday:"short",day:"numeric",month:"short"});
+    [["Morning","10am–12pm"],["Afternoon","2–5pm"],["Evening","6:30–8pm"]].forEach(([n,lab]) => out.push(`${day} · ${n} (${lab})`));
+  }
+  return out;
+}
+function topFive(){
+  return units.filter(u => u.status !== "Rejected" && score(u) > 0).sort((a,b) => score(b)-score(a) || ratedBy(b)-ratedBy(a) || (a.distKm??99)-(b.distKm??99)).slice(0,5);
+}
+const onBoard = id => !!(board && board.items && board.items[id]);
+function openAsk(){
+  const top = topFive();
+  sheet = {type:"ask", sel:new Set(top.map(u => u.id).filter(id => !onBoard(id))), free:((board && board.free) || []).slice()};
+  renderSheet(true);
+}
+function keepScroll(fn){ const sc = $("sheetScroll"), y = sc ? sc.scrollTop : 0; fn(); const s2 = $("sheetScroll"); if(s2) s2.scrollTop = y; }
+function renderAskSheet(){
+  const top = topFive(), topIds = new Set(top.map(u => u.id));
+  const others = units.filter(u => u.status !== "Rejected" && !topIds.has(u.id) && (score(u) > 0 || u.status === "Booked" || u.status === "Viewed" || u.status === "Offer")).sort((a,b) => score(b)-score(a));
+  const row = u => {
+    const it = board && board.items && board.items[u.id];
+    return it ? `<div class="pick"><span style="width:20px;text-align:center">✓</span><span class="grow"><b>${esc(u.name)}</b><br><span style="color:var(--muted);font-size:12.5px">On ${esc(AGENT())}'s board · ${esc(SECTION[it.status]||"")}</span></span><span style="color:var(--rose);font-weight:700;font-size:13px">♥ ${score(u)}</span></div>`
+      : `<label class="pick"><input type="checkbox" data-asksel="${esc(u.id)}" ${sheet.sel.has(u.id)?"checked":""}><span class="grow"><b>${esc(u.name)}</b><br><span style="color:var(--muted);font-size:12.5px">${esc(money(u.askingM))} · ${esc(STATUS_LABEL[u.status]||"")}</span></span><span style="color:var(--rose);font-weight:700;font-size:13px">♥ ${score(u)}</span></label>`;
+  };
+  const qs = quickSlots(), chosen = new Set(sheet.free);
+  const nNew = [...sheet.sel].filter(id => !onBoard(id) && units.some(u => u.id === id)).length;
+  const freeChanged = JSON.stringify(sheet.free) !== JSON.stringify((board && board.free) || []);
+  const link = boardLink();
+  $("sheetRoot").innerHTML = `<div class="scrim" id="scrim"></div><div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(AGENT())}'s board">
+    <div class="hd"><h3>${esc(AGENT())}'s board</h3><button class="close" id="closeSheet" type="button" aria-label="Close">×</button></div>
+    <div class="sc" id="sheetScroll">
+      <div class="box"><h4>Homes</h4>${top.map(row).join("")}${others.length?`<details style="margin-top:6px"><summary style="font-size:13px;color:var(--muted);cursor:pointer">Other homes (${others.length})</summary>${others.map(row).join("")}</details>`:""}</div>
+      <div class="box"><h4>When we're free</h4><p style="font-size:12.5px;color:var(--muted);margin:0 0 8px">Always shown at the top of ${esc(AGENT())}'s board. Keep it up to date here.</p>
+        <div class="chips">${qs.map((s,i) => `<button class="slot" type="button" data-qslot="${i}" aria-pressed="${chosen.has(s)}">${esc(s)}</button>`).join("")}</div>
+        <div class="chips" style="margin-top:8px">${sheet.free.filter(s => !qs.includes(s)).map(s => `<span class="chip">${esc(s)}<button class="x" type="button" data-rmslot="${esc(s)}" aria-label="Remove">×</button></span>`).join("")}</div>
+        <form class="addtag" id="slotForm"><input id="slotIn" placeholder="Or type your own, e.g. Tue 21 Oct after 7pm" maxlength="60" autocomplete="off"><button class="btn sm" type="submit">Add</button></form></div>
+      <button class="btn primary" type="button" id="sendAsk" style="width:100%;justify-content:center;padding:12px;margin-top:12px" ${nNew || freeChanged ? "" : "disabled"}>${nNew ? `Add ${nNew} home${nNew>1?"s":""} & send on WhatsApp` : "Save free times"}</button>
+      <p style="font-size:12px;color:var(--muted);margin:8px 2px 0">${nNew ? `WhatsApp opens with a short message for ${esc(AGENT())} listing the new homes and his board link.` : `Time changes and updates reach ${esc(AGENT())}'s board quietly — he sees what changed next time he opens it.`} He only sees the homes on his board, their listing links, your free times and offers you make.</p>
+      ${link ? `<div class="box"><h4>His board link</h4><div class="chips"><button class="btn sm" type="button" id="copyBoard">Copy link</button><a class="btn sm" href="${esc(link)}" target="_blank" rel="noopener">Open as ${esc(AGENT())} ↗</a><button class="btn sm danger" type="button" id="resetBoard">${sheet.confirmReset ? "Tap again to reset" : "Reset link"}</button></div>
+        <p style="font-size:12px;color:var(--muted);margin:8px 0 0">Reset if the link is ever shared by mistake: the old link stops working and WhatsApp opens with the new one.</p></div>` : ""}
+    </div></div>`;
+  $("scrim").onclick = closeSheet; $("closeSheet").onclick = closeSheet;
+  $("slotForm").onsubmit = ev => { ev.preventDefault(); const v = $("slotIn").value.trim(); if(!v) return; if(!sheet.free.includes(v)) sheet.free.push(v); keepScroll(renderAskSheet); };
+  document.querySelectorAll("[data-asksel]").forEach(cb => cb.onchange = () => { cb.checked ? sheet.sel.add(cb.dataset.asksel) : sheet.sel.delete(cb.dataset.asksel); keepScroll(renderAskSheet); });
+  document.querySelectorAll("[data-qslot]").forEach(b => b.onclick = () => { const s = qs[+b.dataset.qslot]; const i = sheet.free.indexOf(s); i >= 0 ? sheet.free.splice(i,1) : sheet.free.push(s); keepScroll(renderAskSheet); });
+  document.querySelectorAll("[data-rmslot]").forEach(b => b.onclick = () => { sheet.free = sheet.free.filter(s => s !== b.dataset.rmslot); keepScroll(renderAskSheet); });
+  $("sendAsk").onclick = sendAsk;
+  const cp = $("copyBoard"); if(cp) cp.onclick = async () => { try { await navigator.clipboard.writeText(link); toast("Link copied"); } catch(e){ toast(link); } };
+  const rs = $("resetBoard"); if(rs) rs.onclick = () => { if(!sheet.confirmReset){ sheet.confirmReset = true; keepScroll(renderAskSheet); return; } resetBoard(); };
+}
+function waOpen(text){ location.href = "https://wa.me/" + String(agent.phone || "").replace(/\D/g, "") + "?text=" + encodeURIComponent(text); }
+async function sendAsk(){
+  const btn = $("sendAsk"); btn.disabled = true; btn.textContent = "Saving…";
+  const add = [...sheet.sel].map(id => units.find(u => u.id === id)).filter(u => u && !onBoard(u.id));
+  try {
+    const firstTime = !(agent && agent.boardToken && board);
+    const token = await ensureBoard();
+    const now = new Date().toISOString(), flat = {free: sheet.free.slice()};
+    add.forEach(u => {
+      const d = deriveItem(u);
+      flat[`items.${u.id}`] = {name:u.name||"", area:(u.area||"").split("·")[0].trim(), url:u.url||"", addedAt:now, status:d.status, appt:d.appt, closedReason:"", ourOffer:null, changedAt:now, changeNote:"New — added by " + NAME[me.key]};
+    });
+    await restPatch("hs_board/" + token, flat);
+    if(!add.length){ toast("Free times saved to " + AGENT() + "'s board"); closeSheet(); return; }
+    const L = [`Hi ${AGENT()}, it's ${NAME[me.key]} here 🙂`, ""];
+    L.push(firstTime ? `Shernice and I have set up a board for you with the homes we're interested in. You can confirm viewing times, share your views and suggest other units there – it updates our list directly:` : `We've added ${add.length > 1 ? add.length + " homes" : "a home"} to your board:`);
+    if(firstTime){ L.push(boardLink(), ""); L.push("Homes on it:"); }
+    add.forEach((u,i) => L.push(`${i+1}. ${u.name}${u.url ? "\n   " + u.url : ""}`));
+    if(sheet.free.length){ L.push("", "We're free:"); sheet.free.forEach(s => L.push("• " + s)); }
+    if(!firstTime) L.push("", "Your board:", boardLink());
+    L.push("", "Thanks!");
+    closeSheet(); waOpen(L.join("\n"));
+  } catch(e){ toast("Couldn't save — check your connection and try again"); btn.disabled = false; btn.textContent = "Try again"; }
+}
+async function resetBoard(){
+  try {
+    const old = agent.boardToken, token = randToken(32);
+    const keep = Object.assign({}, board, {createdAt:new Date().toISOString(), resetFrom:"", active:true});
+    delete keep.agentSeenAt; delete keep.replyAt;
+    await restPatch("hs_board/" + token, keep, {create:true});
+    await restPatch("hs_meta/agent", {boardToken: token});
+    await restDelete("hs_board/" + old);
+    agent = Object.assign({}, agent, {boardToken: token});
+    closeSheet();
+    waOpen(`Hi ${AGENT()}, it's ${NAME[me.key]} 🙂 Here's a fresh link to our board (the old one no longer works):\n${boardLink()}`);
+  } catch(e){ toast("Couldn't reset — try again"); }
+}
+
+/* "Andrew updated the board" banner + summary sheet */
+const boardFresh = () => board && board.replyAt && millis(board.replyAt) > ((board.seenBy || {})[me.key] || 0);
+function boardSummary(){
+  const R = (board && board.replies) || {}, n = Object.values(R);
+  const c = n.filter(x => x.state === "confirmed" && x.appt).length, v = n.filter(x => (x.view||"").trim()).length, o = n.filter(x => x.counter && typeof x.counter.amountM === "number").length;
+  return [c ? `${c} viewing${c>1?"s":""} confirmed` : "", v ? `views on ${v}` : "", o ? `${o} counter-offer${o>1?"s":""}` : "", (board.suggestions||[]).length ? `${board.suggestions.length} suggestion${board.suggestions.length>1?"s":""}` : ""].filter(Boolean).join(", ") || "tap to see";
+}
+function openReply(){
+  if(!board) return;
+  sheet = {type:"reply"};
+  if(board.replyAt) restPatch("hs_board/" + agent.boardToken, {["seenBy." + me.key]: millis(board.replyAt)}).catch(()=>{});
   renderSheet(true);
 }
 function renderReplySheet(){
-  const a = asks.find(x => x.id === sheet.id); if(!a){ closeSheet(); return; }
-  const rh = (a.reply||{}).homes || {};
-  const ST = {confirmed:"✅ Confirmed", unavailable:"⛔ Can't arrange", sold:"🏷️ Sold / withdrawn", pending:"⏳ Still checking"};
-  $("sheetRoot").innerHTML = `<div class="scrim" id="scrim"></div><div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(AGENT())}'s reply">
-    <div class="hd"><h3>${esc(AGENT())}'s reply</h3><button class="close" id="closeSheet" type="button" aria-label="Close">×</button></div>
+  if(!board){ closeSheet(); return; }
+  const R = board.replies || {}, items = Object.entries(board.items || {});
+  const order = ["offer","upcoming","new","viewed","closed"];
+  items.sort((a,b) => order.indexOf(a[1].status) - order.indexOf(b[1].status));
+  $("sheetRoot").innerHTML = `<div class="scrim" id="scrim"></div><div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(AGENT())}'s board">
+    <div class="hd"><h3>${esc(AGENT())}'s updates</h3><button class="close" id="closeSheet" type="button" aria-label="Close">×</button></div>
     <div class="sc" id="sheetScroll">
-      ${(a.reply||{}).note ? `<div class="box"><h4>His note</h4><div class="notes">${esc(a.reply.note)}</div></div>` : ""}
-      <div class="box"><h4>Homes</h4>${(a.homes||[]).map(x => { const r = rh[x.id] || {}; return `<div class="reply"><b>${esc(x.name)}</b> <span style="color:var(--muted)">${esc(ST[r.state] || "No update yet")}${r.state==="confirmed"&&r.appt?" · "+esc(fmtWhen(r.appt)):""}</span>${(r.view||"").trim()?`<div style="margin-top:4px">“${esc(r.view.trim())}”</div>`:""}<div style="margin-top:6px"><button class="btn sm" type="button" data-open="${esc(x.id)}">Open home</button></div></div>`; }).join("")}</div>
-      <p style="font-size:12px;color:var(--muted);margin:8px 2px 0">Confirmed times are already in Viewings, and his views are in each home's chat. Sent by ${esc(a.from||NAME[a.by]||"")} ${esc(ago(a.createdAt))}; his link works until ${esc(new Date(millis(a.expiresAt)).toLocaleDateString("en-SG",{day:"numeric",month:"short"}))}.</p>
+      ${board.agentNote ? `<div class="box"><h4>His note</h4><div class="notes">${esc(board.agentNote)}</div></div>` : ""}
+      <div class="box"><h4>Homes on his board</h4>${items.map(([id, it]) => { const r = R[id] || {}; return `<div class="reply"><b>${esc(it.name)}</b> <span class="pill st-Unviewed" style="margin-left:4px">${esc(SECTION[it.status]||"")}</span>
+        <div style="color:var(--muted);font-size:13px;margin-top:2px">${esc(RSTATE[r.state] || "No update yet")}${r.state==="confirmed"&&r.appt?" · "+esc(fmtWhen(r.appt)):""}${it.ourOffer?` · our offer ${esc(fmtM(it.ourOffer.amountM))}`:""}${r.counter&&typeof r.counter.amountM==="number"?` · counter ${esc(fmtM(r.counter.amountM))}`:""}</div>
+        ${(r.view||"").trim()?`<div style="margin-top:4px">“${esc(r.view.trim())}”</div>`:""}<div style="margin-top:6px"><button class="btn sm" type="button" data-open="${esc(id)}">Open home</button></div></div>`; }).join("") || `<div style="color:var(--muted);font-size:13px">Nothing on his board yet.</div>`}</div>
+      ${(board.suggestions||[]).length ? `<div class="box"><h4>His suggestions</h4>${board.suggestions.map(s => `<div class="reply"><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.url.replace(/^https?:\/\/(www\.)?/,"").slice(0,60))} ↗</a>${s.note?`<div style="margin-top:4px">“${esc(s.note)}”</div>`:""}</div>`).join("")}<p style="font-size:12px;color:var(--muted);margin:6px 0 0">These are sent to Claude's research and appear in Homes, marked "Suggested by ${esc(AGENT())}".</p></div>` : ""}
     </div></div>`;
   $("scrim").onclick = closeSheet; $("closeSheet").onclick = closeSheet;
+}
+
+/* Our offer on a home (shown in its details) */
+function offerBox(r){
+  const o = r.offer, c = r.counter, hist = r.offerHistory || [];
+  return `<div class="box"><h4>Offer</h4>
+    ${o ? `<div style="font-size:14px"><b>Our offer: ${esc(fmtM(o.amountM))}</b> <span style="color:var(--muted)">· ${esc(NAME[o.by]||"")} ${esc(ago(o.at))}</span>${o.note?`<div style="color:var(--muted);font-size:13px">${esc(o.note)}</div>`:""}</div>` : `<div style="color:var(--muted);font-size:13px">No offer yet.</div>`}
+    ${c && typeof c.amountM === "number" ? `<div style="font-size:14px;margin-top:8px"><b style="color:var(--rose)">Seller's counter: ${esc(fmtM(c.amountM))}</b> <span style="color:var(--muted)">· via ${esc(AGENT())} ${esc(ago(c.at))}</span>${c.note?`<div style="color:var(--muted);font-size:13px">${esc(c.note)}</div>`:""}</div>` : ""}
+    ${hist.length > 1 ? `<details style="margin-top:6px"><summary style="font-size:12.5px;color:var(--muted);cursor:pointer">Offer history (${hist.length})</summary>${hist.map(h => `<div style="font-size:12.5px;color:var(--muted)">${esc(h.kind === "counter" ? "Seller counter" : "Our offer")} ${esc(fmtM(h.amountM))} · ${esc(new Date(h.at).toLocaleDateString("en-SG",{day:"numeric",month:"short"}))}</div>`).join("")}</details>` : ""}
+    <form class="form" id="offerForm" style="margin-top:10px"><label>${o ? "New offer" : "Offer"} (S$)<input id="offerAmt" inputmode="decimal" placeholder="e.g. 2,650,000 or 2.65M"></label><label>Note to seller (optional)<input id="offerNote" maxlength="120" placeholder="e.g. 3-month completion"></label>
+      <div class="w"><button class="btn primary sm" type="submit">Save offer</button> <span style="font-size:12px;color:var(--muted)">${board && board.items && board.items[r.id] ? `Shown to ${esc(AGENT())} on his board.` : `Add this home to ${esc(AGENT())}'s board to share it with him.`}</span></div></form></div>`;
+}
+function wireOffer(r){
+  const f = $("offerForm"); if(!f) return;
+  f.onsubmit = ev => { ev.preventDefault(); const m = parseMoney($("offerAmt").value); if(!m || m < 0.3 || m > 10){ toast("Enter the offer, e.g. 2,650,000 or 2.65M"); return; }
+    const at = new Date().toISOString(), o = {amountM:m, note:$("offerNote").value.trim(), at, by:me.key};
+    save(r.id, {offer:o, status:"Offer", offerHistory:FV.arrayUnion({kind:"offer", amountM:m, at, by:me.key})}, "Offer saved — " + fmtM(m));
+    addComment(r.id, me.key, `Offered ${fmtM(m)}${o.note ? " — " + o.note : ""}`).catch(()=>{});
+  };
+}
+async function addComment(id, by, text){
+  const at = new Date().toISOString();
+  await unitRef(id).collection("comments").add({by, text, at});
+  await unitRef(id).update({commentCount:FV.increment(1), lastComment:{by, text:text.slice(0,140), at}});
 }
 
 /* ---------- Events ---------- */
@@ -818,7 +951,7 @@ document.addEventListener("click", ev => {
   const t = ev.target.closest("button,[data-open]"); if(!t || !me) return;
   if(t.classList.contains("tab")){ tab = t.dataset.tab; try{localStorage.setItem("hs-tab",tab);}catch(e){} render(); window.scrollTo(0,0); return; }
   if(t.id === "askBtn"){ openAsk(); return; }
-  if(t.dataset.reply){ openReply(t.dataset.reply); return; }
+  if(t.dataset.reply){ openReply(); return; }
   if(t.id === "fab"){ sheet = {type:"add"}; renderSheet(true); return; }
   if(t.dataset.open){ openUnit(t.dataset.open); return; }
   if(t.dataset.rate){ const id = t.dataset.rate, n = +t.dataset.n; const r = units.find(u => u.id === id); const cur = r ? ratingOf(r, me.key) : 0; const upd = {["ratings."+me.key]: cur === n ? 0 : n};
