@@ -148,6 +148,8 @@ h2.sec small{font:500 13px var(--f-body);color:var(--muted)}
 .photo.big{height:200px;border-radius:16px;margin:0 0 4px}
 .photo .pnote{position:absolute;left:8px;bottom:8px;background:rgba(0,0,0,.6);color:#fff;font-size:11px;font-weight:600;border-radius:6px;padding:2px 7px}
 .devtile{color:#fff;font:800 22px var(--f-display);letter-spacing:.02em}
+.dupb{background:var(--kaya-soft);padding:10px 14px;font-size:13.5px}
+.dupb.big{border-radius:16px;margin-top:12px}
 .lastc{font-size:13px;background:var(--bg);border-radius:12px;padding:8px 10px}
 .lastc b{font-weight:700}
 .cmp-on{background:var(--kaya-soft);border-color:var(--kaya)}
@@ -457,6 +459,7 @@ function card(r){
   const lc = r.lastComment;
   return `<article class="card ${st==="Rejected"?"rej":""}">
     ${photoBanner(r)}
+    ${dupBanner(r)}
     <div class="hero">${r.photoUrl ? `<div class="pic ${k}">${pic(k)}</div>` : devTile(r)}<div class="ttl">
       <h3>${esc(r.name)}</h3><div class="sub">${esc(r.area||"")}</div>${r.isNew && !isNewFor(r,me.key) && isNewFor(r,partnerOf(me.key)) && r.status!=="Rejected" ? `<div class="hint">👀 ${esc(NAME[partnerOf(me.key)])} hasn't looked yet</div>` : ""}${updatedFor(r,me.key)&&r.updateNote?`<div class="hint upd">↻ ${esc(r.updateNote)}</div>`:""}
       <div class="row"><span class="dist">${typeof r.distKm==="number"?(r.distEst?"≈":"")+r.distKm.toFixed(r.distKm<1?2:1)+" km":"—"} from Kovan</span><span class="pill st-${st}">${esc(STATUS_LABEL[st])}</span>${isNewFor(r,me.key)?`<span class="pill new">New</span>`:updatedFor(r,me.key)?`<span class="pill upd" title="${esc(r.updateNote||"")}">Updated</span>`:""}${r.listingState&&r.listingState!=="Live"?`<span class="pill st-Booked">${esc(r.listingState)}</span>`:""}</div>
@@ -479,6 +482,75 @@ function card(r){
   </article>`;
 }
 
+/* ---------- Duplicates: "Same as…" merge ---------- */
+const devName = u => (u.name || "").replace(/\(.*?\)/g, "").trim().toLowerCase();
+function dupBanner(r, big){
+  const d = r.dupOf; if(!d || !d.id || r.dupChecked) return "";
+  const t = units.find(u => u.id === d.id); if(!t) return "";
+  return `<div class="dupb ${big?"big":""}">⧉ Possible duplicate of <b>${esc(t.name)}</b> (${esc(money(t.askingM))}${t.sizeSqft?", "+Number(t.sizeSqft).toLocaleString("en-SG")+" sqft":""})
+    <div class="chips" style="margin-top:6px"><button class="btn sm primary" type="button" data-dupyes="${esc(r.id)}" data-into="${esc(t.id)}">Same unit</button><button class="btn sm" type="button" data-dupno="${esc(r.id)}">Different unit</button></div></div>`;
+}
+function dupCandidates(u){
+  const others = units.filter(x => x.id !== u.id && x.status !== "Rejected");
+  const sim = x => Math.abs((x.sizeSqft||0) - (u.sizeSqft||0)) / 50 + Math.abs((x.askingM||0) - (u.askingM||0)) * 10;
+  const same = others.filter(x => devName(x) === devName(u)).sort((a,b) => sim(a) - sim(b));
+  const rest = others.filter(x => devName(x) !== devName(u)).sort((a,b) => (a.name||"").localeCompare(b.name||""));
+  return {same, rest};
+}
+function renderDupSheet(){
+  const u = units.find(x => x.id === sheet.id); if(!u){ closeSheet(); return; }
+  const {same, rest} = dupCandidates(u);
+  const q = (sheet.q||"").trim().toLowerCase();
+  const row = x => `<div class="rrow">${x.photoUrl ? `<img class="rthumb" src="${esc(x.photoUrl)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : devTile(x).replace('class="pic devtile"','class="pic devtile rthumb"')}
+    <div class="grow"><b>${esc(x.name)}</b><div class="rs">${esc([money(x.askingM), x.sizeSqft ? Number(x.sizeSqft).toLocaleString("en-SG")+" sqft" : "", (x.format||"").split(/[,(;]/)[0].trim()].filter(Boolean).join(" · "))}</div><div class="rs">${esc(STATUS_LABEL[x.status]||"")}${score(x)?" · ♥ "+score(x):""}</div></div>
+    <button class="btn sm primary" type="button" data-dupyes="${esc(u.id)}" data-into="${esc(x.id)}">This one</button></div>`;
+  const restF = q ? rest.filter(x => (x.name||"").toLowerCase().includes(q)) : [];
+  $("sheetRoot").innerHTML = `<div class="scrim" id="scrim"></div><div class="sheet" role="dialog" aria-modal="true" aria-label="Same as">
+    <div class="hd"><h3>Same unit as…</h3><button class="close" id="closeSheet" type="button" aria-label="Close">×</button></div>
+    <div class="sc" id="sheetScroll">
+      <div class="box"><h4>This listing</h4><div class="rrow" style="border:none">${u.photoUrl ? `<img class="rthumb" src="${esc(u.photoUrl)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : devTile(u).replace('class="pic devtile"','class="pic devtile rthumb"')}<div class="grow"><b>${esc(u.name)}</b><div class="rs">${esc([money(u.askingM), u.sizeSqft ? Number(u.sizeSqft).toLocaleString("en-SG")+" sqft" : "", (u.format||"").split(/[,(;]/)[0].trim()].filter(Boolean).join(" · "))}</div></div></div></div>
+      <div class="box"><h4>Same development</h4>${same.length ? same.map(row).join("") : `<div style="color:var(--muted);font-size:13px">No other ${esc(u.name)} units on your list.</div>`}</div>
+      <div class="box"><h4>Another home</h4><input class="search" id="dupQ" placeholder="Search by name" value="${esc(sheet.q||"")}" style="margin-bottom:6px">${restF.map(row).join("")}</div>
+      <p style="font-size:12px;color:var(--muted);margin:8px 2px 0">The new card is removed and its link and price are kept on the home you pick, under "Same unit, also listed by". Your hearts and notes there stay. Claude won't add this link again.</p>
+    </div></div>`;
+  $("scrim").onclick = closeSheet; $("closeSheet").onclick = closeSheet;
+  $("dupQ").oninput = e => { sheet.q = e.target.value; const pos = e.target.selectionStart; keepScroll(renderDupSheet); const i = $("dupQ"); i.focus(); try{ i.setSelectionRange(pos,pos); }catch(_){} };
+}
+let lastMerge = null;
+async function mergeInto(srcId, intoId){
+  const u = units.find(x => x.id === srcId), t = units.find(x => x.id === intoId); if(!u || !t) return;
+  if(score(u) > 0 || u.commentCount){ if(!confirmMerge(u)) return; }
+  const now = new Date().toISOString();
+  const add = [{url:u.url||"", askingM:typeof u.askingM === "number" ? u.askingM : null, mergedAt:now, by:me.key}].concat((u.otherListings||[]).map(o => Object.assign({}, o))).filter(o => o.url);
+  const backup = Object.assign({}, u); delete backup.id;
+  try {
+    const batch = db.batch();
+    add.forEach(o => batch.update(unitRef(t.id), {otherListings: FV.arrayUnion(o)}));
+    batch.set(db.doc("hs_meta/merged"), {urls: FV.arrayUnion(...add.map(o => o.url))}, {merge:true});
+    batch.delete(unitRef(u.id));
+    await Promise.race([batch.commit(), new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 15000))]);
+    lastMerge = {backup, id:u.id, into:t.id, add};
+    closeSheet(); render();
+    toastUndo(`Merged into ${t.name}`, undoMerge);
+  } catch(e){ toast("Couldn't merge — check your connection and try again"); }
+}
+function confirmMerge(u){ return window.confirm(`${u.name} has hearts or comments. They'll be lost when it's merged. Continue?`); }
+async function undoMerge(){
+  const m = lastMerge; if(!m) return; lastMerge = null;
+  try {
+    const batch = db.batch();
+    batch.set(unitRef(m.id), m.backup);
+    m.add.forEach(o => batch.update(unitRef(m.into), {otherListings: FV.arrayRemove(o)}));
+    batch.set(db.doc("hs_meta/merged"), {urls: FV.arrayRemove(...m.add.map(o => o.url))}, {merge:true});
+    await batch.commit(); toast("Undone");
+  } catch(e){ toast("Couldn't undo"); }
+}
+function toastUndo(text, fn){
+  const el = $("toast"); el.innerHTML = `${esc(text)} <button type="button" id="undoBtn" style="margin-left:10px;background:none;border:none;color:var(--kaya);font-weight:700">Undo</button>`; el.hidden = false;
+  $("undoBtn").onclick = () => { el.hidden = true; fn(); };
+  clearTimeout(toast._t); toast._t = setTimeout(() => el.hidden = true, 8000);
+}
+
 /* ---------- "New for you to review" (Top 5 tab) ---------- */
 const addedTime = u => Date.parse(u.addedAt || "") || Date.parse((u.checkedAt || "") + "T00:00:00Z") || 0;
 function originOf(u){
@@ -495,7 +567,7 @@ function reviewRow(u){
   return `<div class="rrow">${u.photoUrl ? `<img class="rthumb" src="${esc(u.photoUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-open="${esc(u.id)}" onerror="this.remove()">` : devTile(u).replace('class="pic devtile"','class="pic devtile rthumb" data-open="'+esc(u.id)+'"')}<div class="grow" data-open="${esc(u.id)}" role="button" tabindex="0">
       <div><b>${esc(u.name)}</b> <span class="pill ${upd?"upd":"new"}">${upd?"Updated":"New"}</span></div>
       <div class="rs">${esc(sub)}</div>${why ? `<div class="rs">${why}</div>` : ""}${dots ? `<div class="trips" style="margin-top:4px;gap:4px">${dots}</div>` : ""}</div>
-    <button class="tbtn" type="button" data-nope="${esc(u.id)}" aria-label="Not for us" title="Not for us">👎</button></div>`;
+    <div style="display:flex;flex-direction:column;align-items:center;gap:2px"><button class="tbtn" type="button" data-nope="${esc(u.id)}" aria-label="Not for us" title="Not for us">👎</button><button class="ghost" type="button" data-dup="${esc(u.id)}" style="font-size:11px;padding:2px;text-decoration:none">⧉ Same as</button></div></div>`;
 }
 function newForReview(active, unrated){
   const list = active.filter(u => (isNewFor(u, me.key) || updatedFor(u, me.key)) && !noped(u, me.key))
@@ -614,12 +686,14 @@ function renderSheet(fresh){
   if(sheet.type === "add") return renderAddSheet(fresh);
   if(sheet.type === "ask") return renderAskSheet();
   if(sheet.type === "reply") return renderReplySheet();
+  if(sheet.type === "dup") return renderDupSheet();
   const r = units.find(u => u.id === sheet.id);
   if(!r){ closeSheet(); return; }
   const st = STATUSES.includes(r.status) ? r.status : "Unviewed";
   const editing = sheet.edit;
   const inner = `
     ${photoBanner(r, true)}
+    ${dupBanner(r, true)}
     ${sheet.wasUpdated ? `<div class="box" style="background:var(--sky-soft)"><b style="color:var(--sky)">↻ Updated since you last looked:</b> ${esc(sheet.wasUpdated)}</div>` : ""}
     <div class="box"><div class="money"><span class="ask ${r.askingM>CFG.budgetM?"over":""}">${esc(money(r.askingM))}</span><span class="fair">fair ${esc(fairTxt(r))}</span></div>
       ${r.askingNote?`<div style="font-size:12.5px;color:var(--muted);margin-top:4px">${esc(r.askingNote)}</div>`:""}
@@ -644,7 +718,7 @@ function renderSheet(fresh){
       <dt>Format</dt><dd>${esc(r.format||"—")}</dd><dt>Beds</dt><dd>${esc(r.beds||"—")}</dd><dt>Size</dt><dd>${r.sizeSqft?Number(r.sizeSqft).toLocaleString("en-SG")+" sqft":"—"}</dd>
       <dt>From Kovan</dt><dd>${typeof r.distKm==="number"?(r.distEst?"≈":"")+r.distKm+" km":"—"}</dd><dt>MRT</dt><dd>${esc(r.mrt||"—")}${r.mrtDist?" · "+esc(r.mrtDist):""}</dd>
       <dt>Lease</dt><dd>${esc(r.lease||"—")}</dd><dt>Area</dt><dd>${esc(r.area||"—")}</dd>${r.checkedAt?`<dt>Checked</dt><dd>${esc(r.checkedAt)}</dd>`:""}</dl>
-      <div class="chips" style="margin-top:10px">${r.url?`<a class="btn sm" href="${esc(r.url)}" target="_blank" rel="noopener">Open listing ↗</a>`:""}<a class="btn sm" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((r.name||"")+" Singapore")}" target="_blank" rel="noopener">Map ↗</a></div>
+      <div class="chips" style="margin-top:10px">${r.url?`<a class="btn sm" href="${esc(r.url)}" target="_blank" rel="noopener">Open listing ↗</a>`:""}<a class="btn sm" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((r.name||"")+" Singapore")}" target="_blank" rel="noopener">Map ↗</a><button class="btn sm" type="button" data-dup="${esc(r.id)}">⧉ Same as…</button></div>
       ${(r.otherListings||[]).length ? `<div style="margin-top:10px;font-size:13px;color:var(--muted)">Same unit, also listed by: ${(r.otherListings||[]).map((o,i) => `<a href="${esc(o.url)}" target="_blank" rel="noopener">listing ${i+2}${typeof o.askingM==="number"?" ("+esc(money(o.askingM))+")":""} ↗</a>`).join(" · ")}</div>` : ""}</div>
     <div class="box"><h4>Claude's notes</h4>${editing ? `<form class="form" id="editForm">
         <label>Asking (S$M)<input id="e-ask" type="number" step="0.001" value="${r.askingM??""}"></label><label>Size (sqft)<input id="e-size" type="number" value="${r.sizeSqft??""}"></label>
@@ -1049,6 +1123,9 @@ document.addEventListener("click", ev => {
   if(t.classList.contains("tab")){ tab = t.dataset.tab; try{localStorage.setItem("hs-tab",tab);}catch(e){} render(); window.scrollTo(0,0); return; }
   if(t.id === "askBtn"){ openAsk(); return; }
   if(t.dataset.reply){ openReply(); return; }
+  if(t.dataset.dup){ sheet = {type:"dup", id:t.dataset.dup, q:""}; renderSheet(true); return; }
+  if(t.dataset.dupyes){ mergeInto(t.dataset.dupyes, t.dataset.into); return; }
+  if(t.dataset.dupno){ save(t.dataset.dupno, {dupOf:null, dupChecked:true}, "Kept as a different unit"); return; }
   if(t.id === "fab"){ sheet = {type:"add"}; renderSheet(true); return; }
   if(t.dataset.open){ openUnit(t.dataset.open); return; }
   if(t.dataset.rate){ const id = t.dataset.rate, n = +t.dataset.n; const r = units.find(u => u.id === id); const cur = r ? ratingOf(r, me.key) : 0; const upd = {["ratings."+me.key]: cur === n ? 0 : n};

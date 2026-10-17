@@ -66,8 +66,17 @@ freehold is not a plus on its own. Budget, lease and 6 km rules are unchanged.
   view or facing match (or the price is within ~3% with nothing contradicting),
   treat it as the SAME unit: do not create a new unit. Instead append
   `{"url": ..., "askingM": ...}` to that unit's `otherListings` array and
-  mention it in the run summary. If unsure, add it but put "Possible duplicate
-  of <name/listing>" in `concerns`.
+  mention it in the run summary. If unsure, add it and set
+  `dupOf: {"id": <existing unit id>, "label": "<short reason>"}` — the app then
+  asks them "Same unit / Different unit" on the new card. Never set `dupOf` on a
+  unit that has `dupChecked: true` (they already said it's different).
+- **Links they merged:** Firestore `hs_meta/merged` has `urls`, the listings they
+  marked as the same unit in the app. Never add a listing whose URL is in that
+  list or already in any unit's `otherListings` (compare without query strings).
+  This applies to rescans; a link they paste again is still added.
+- **Refreshing prices:** also re-check each `otherListings` entry's asking price
+  and update its `askingM`; if another agent's price is lower than the unit's
+  `askingM`, say so in `updateNote` (e.g. "Also listed at S$2.35M by another agent").
 - **Variety in rescans:** "More like Riverfront Residences" means similar
   developments, not more Riverfront units. Add at most 2 new listings from any
   one development per rescan, and only if they're clearly different units
