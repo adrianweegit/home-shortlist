@@ -625,8 +625,9 @@ function viewTop(){
   if(dis.length){
     h += `<h2 class="sec">Let's talk about these <small>you rated them differently</small></h2><div class="disagree">${dis.map(u => `<button class="dz" type="button" data-open="${esc(u.id)}"><span class="nm">${esc(u.name)}</span><span class="sc">${KEYS.map(k => `${esc(NAME[k])} <span style="color:var(--rose)">${"♥".repeat(ratingOf(u,k))}</span>`).join(" · ")}</span></button>`).join("")}</div>`;
   }
-  const next = units.filter(u => u.status === "Booked" && u.appt && new Date(u.appt) >= new Date(Date.now()-3*3600e3)).sort((a,b) => new Date(a.appt)-new Date(b.appt)).slice(0,2);
-  if(next.length) h += `<h2 class="sec">Next viewings</h2><div class="tl">${next.map(u => viewItem(u,true)).join("")}</div>`;
+  const next = units.filter(u => u.status === "Booked" && u.appt && new Date(u.appt) >= new Date(Date.now()-3*3600e3)).sort((a,b) => new Date(a.appt)-new Date(b.appt));
+  const soon = next.filter((u,i) => i < 3 || new Date(u.appt) - new Date(next[0].appt) < 24*3600e3).slice(0,6); // whole next viewing day, else up to 3
+  if(next.length) h += `<h2 class="sec">Next viewings <small>${next.length}</small></h2><div class="tl">${soon.map(u => viewItem(u,true)).join("")}</div>${next.length > soon.length ? `<button class="ghost" type="button" data-gotab="view" style="margin:6px 0 0 2px">See all ${next.length} viewings ›</button>` : ""}`;
   h += newForReview(active, unrated);
   return h;
 }
@@ -1241,6 +1242,7 @@ document.addEventListener("click", ev => {
   if(t.classList.contains("tab")){ tab = t.dataset.tab; try{localStorage.setItem("hs-tab",tab);}catch(e){} render(); window.scrollTo(0,0); return; }
   if(t.id === "askBtn"){ openAsk(); return; }
   if(t.id === "bellBtn"){ openActivity(); return; }
+  if(t.dataset.gotab){ tab = t.dataset.gotab; try{localStorage.setItem("hs-tab",tab);}catch(e){} render(); window.scrollTo(0,0); return; }
   if(t.dataset.actopen){ openUnit(t.dataset.actopen, t.dataset.chat === "1"); return; }
   if(t.dataset.actf){ sheet.f = t.dataset.actf; renderActivitySheet(); return; }
   if(t.dataset.reply){ openReply(); return; }
