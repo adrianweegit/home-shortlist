@@ -46,6 +46,30 @@ logistics. Always add them, tag the school run under `concerns` (e.g. "School
 runs hard (PLMGS ~59 min)"), and don't push back or recommend against them in
 notes. Agent suggestions follow the same rule as pasted links.
 
+## Layout rules from our viewings (18 Oct 2026)
+After viewing The Minton, Riverfront and Stars of Kovan, every home must also
+pass these. Check them on the floor plan. For rescans, skip homes that fail;
+for pasted links, add them and list each miss under `concerns`.
+1. **Indoor dining area:** a proper dining space inside, not a table on the
+   balcony. Concern tag: "No indoor dining (floor plan)".
+2. **Laundry space:** a yard, utility area or service balcony. Tag: "No yard/utility".
+3. **Bedroom sizes:** common bedrooms that fit a queen bed with room to move,
+   roughly 110–120 sqft or more (about 3.2 m × 3.2 m). Tag: "Small bedrooms".
+4. **Low-floor privacy:** skip levels 2–3 facing the pool, guardhouse,
+   clubhouse or drop-off point unless the patio/balcony is screened.
+   Ground-floor units with a PES are NOT skipped: add them and let us judge
+   privacy (note what the PES faces in `notes`).
+5. **Size for newer condos:** condos completed after about 2012 need about
+   **1,600 sqft** or more; older condos keep the ~1,400 sqft floor. (Newer
+   layouts squeeze rooms; 1,485 sqft at Riverfront felt cramped.)
+6. **No townhouses inside mixed developments** (shops below, like Stars of Kovan).
+7. **Floor plan on every card:** set `floorPlanUrl` to the listing's floor plan
+   image on PropertyGuru (`/listing/<thatListingId>/UFLOO.` URL, use the
+   V800 size). Never use another listing's or the project's generic plans. If
+   the listing has none, leave it unset and add the concern "No floor plan in
+   listing". On each run, also add `floorPlanUrl` to up to 10 active units that
+   are missing it (oldest checkedAt first), and apply rules 1–3 from the plan.
+
 ## Refined criteria (from their ratings, 17 Oct 2026)
 These sharpen the criteria in your instructions. For **rescans**, only add homes
 that meet all of them. If you are reading this after a rescan, re-check every
