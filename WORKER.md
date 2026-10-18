@@ -170,3 +170,19 @@ The app's bell shows an Activity feed read from `hs_meta` docs that have an
 also create `hs_meta/act_<random>` with
 `{"kind":"comment","by":"claude","unitId":<id>,"unitName":<name>,"text":<first 300 chars>,"actAt":<UTC ISO>}`.
 Never edit or delete other `act_*` docs or `hs_meta/actread`.
+
+## Claude's own rating (19 Oct 2026)
+Every active unit carries `claude: {"n": 1-5, "why": "<one plain sentence>", "at": "YYYY-MM-DD"}`
+— your rating as if you were house-hunting with Adrian & Shernice's needs. It is
+shown on the cards but never counted in their Top 5. Set it on every unit you add,
+and re-rate (new `at`) when a floor plan, price, viewing note or key fact changes.
+Don't rate Rejected units. Weigh, most important first:
+1. School runs (PLMGS easy/ok is a must; a "hard" run caps the rating at 2).
+2. Layout rules above: indoor dining, laundry space, bedroom sizes, size floor
+   (1,600 sqft for newer condos, 1,400 older). Under the size floor caps at 2.
+3. Privacy and format: GF with private patio, penthouse with terrace, or high floor with a view.
+4. Price vs fair value and budget (S$2.8M condo / S$3.0M landed).
+5. Lease (80+; 70+ for penthouses near an MRT); freehold/999 a small plus.
+6. Estate quality and upkeep; big-developer overhang or thin sales count against.
+7. What they like: an open view like Riverfront's, dual-key for parents later, near Kovan.
+Their viewing notes (comments and "Viewed:" concerns) override listing claims.

@@ -146,6 +146,9 @@ h2.sec small{font:500 13px var(--f-body);color:var(--muted)}
 .hsep{width:1px;height:18px;background:var(--line);margin:0 2px}
 .hrow.ro .hbtn{cursor:default}
 .hrow .none{color:var(--muted);font-size:12px;white-space:nowrap}
+.clrow{background:none;border:none;padding:0;width:100%;text-align:left;font:inherit;color:inherit;cursor:pointer}
+.hbtn.cl{color:var(--line)} .hbtn.cl.on{color:var(--pandan)}
+.clwhy{font-size:13px;line-height:1.4;background:var(--pandan-soft);border-radius:10px;padding:8px 10px;margin:4px 0 2px}
 .foot{display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-top:1px solid var(--line);padding:10px 14px}
 .btn{border:1px solid var(--line);background:var(--paper);border-radius:10px;padding:7px 12px;font-weight:600;font-size:13px;text-decoration:none;color:var(--ink);display:inline-flex;align-items:center;gap:6px}
 .btn.primary{background:var(--pandan);border-color:var(--pandan);color:#fff}
@@ -456,6 +459,12 @@ function heartsRow(r, k){
   const btns = [1,2,3,4,5].map(n => `<button class="hbtn ${n<=v?"on":""}" type="button" ${mine?`data-rate="${esc(r.id)}" data-n="${n}"`:"disabled"} aria-label="${mine?"Rate "+n+" of 5":NAME[k]+" rated "+v}">♥</button>`).join("");
   return `<div class="hrow ${mine?"":"ro"}"><span class="nm">${esc(NAME[k])}</span>${thumb}<span class="hsep"></span>${btns}${!mine && !v && !no ? `<span class="none">not rated yet</span>` : no && !mine ? `<span class="none">said no</span>` : ""}</div>`;
 }
+function claudeRow(r){ // Claude's own rating: read-only, never counted in Top 5
+  const c = r.claude; if(!c || !c.n) return "";
+  const btns = [1,2,3,4,5].map(n => `<span class="hbtn cl ${n<=c.n?"on":""}">♥</span>`).join("");
+  return `<button class="hrow ro clrow" type="button" data-clwhy="${esc(r.id)}" aria-label="Claude rated ${c.n} of 5 — tap for why"><span class="nm">Claude</span><span class="tbtn" style="visibility:hidden">👎</span><span class="hsep"></span>${btns}<span class="none">why ›</span></button>${openWhy.has(r.id) ? `<div class="clwhy">${esc(c.why||"")}${c.at ? ` <span class="muted">· rated ${esc(c.at)}</span>` : ""}</div>` : ""}`;
+}
+const openWhy = new Set();
 function bar(r){
   if(typeof r.askingM !== "number") return "";
   const lo = r.fairLowM, hi = r.fairHighM;
@@ -500,7 +509,7 @@ function card(r){
       <div class="chips"><span class="chip fact">${esc(r.beds||"")}</span>${r.sizeSqft?`<span class="chip fact">${Number(r.sizeSqft).toLocaleString("en-SG")} sqft</span>`:""}<span class="chip fact">🚇 ${esc(r.mrt||"—")}${r.mrtDist?" · "+esc(r.mrtDist):""}</span><span class="chip fact">⏳ ${esc(r.lease||"—")}</span><span class="chip fact">${esc(r.format||"")}</span></div>
       ${tripChips(r)}
       ${loves||concerns ? `<div class="chips">${loves}${concerns}</div>` : ""}
-      <div class="hearts">${KEYS.map(k2 => heartsRow(r,k2)).join("")}</div>
+      <div class="hearts">${KEYS.map(k2 => heartsRow(r,k2)).join("")}${claudeRow(r)}</div>
       ${lc ? `<div class="lastc"><b>${esc(NAME[lc.by]||lc.by)}:</b> ${esc(lc.text)} <span style="color:var(--muted)">· ${esc(ago(lc.at))}</span></div>` : ""}
     </div>
     <div class="foot">
@@ -666,7 +675,7 @@ const FILTERS = [
 ];
 function homesFiltered(){
   const fn = (FILTERS.find(f => f[0] === filter) || FILTERS[0])[2];
-  const sorters = {dist:(a,b)=>(a.distKm??99)-(b.distKm??99), hearts:(a,b)=>score(b)-score(a)||(a.distKm??99)-(b.distKm??99), price:(a,b)=>(a.askingM??99)-(b.askingM??99), value:(a,b)=>((a.askingM??99)-(a.fairHighM??a.askingM??99))-((b.askingM??99)-(b.fairHighM??b.askingM??99)), school:(a,b)=>tripScore(a)-tripScore(b)||(a.distKm??99)-(b.distKm??99)};
+  const sorters = {dist:(a,b)=>(a.distKm??99)-(b.distKm??99), hearts:(a,b)=>score(b)-score(a)||(a.distKm??99)-(b.distKm??99), price:(a,b)=>(a.askingM??99)-(b.askingM??99), value:(a,b)=>((a.askingM??99)-(a.fairHighM??a.askingM??99))-((b.askingM??99)-(b.fairHighM??b.askingM??99)), school:(a,b)=>tripScore(a)-tripScore(b)||(a.distKm??99)-(b.distKm??99), claude:(a,b)=>((b.claude&&b.claude.n)||0)-((a.claude&&a.claude.n)||0)||(ratingOf(a,me.key)?1:0)-(ratingOf(b,me.key)?1:0)||(a.distKm??99)-(b.distKm??99)};
   const q = query.trim().toLowerCase();
   return (q ? units.filter(u => [u.name,u.area,u.mrt,u.format].join(" ").toLowerCase().includes(q)) : units.filter(fn)).sort(sorters[sort] || sorters.dist);
 }
@@ -674,7 +683,7 @@ function viewHomes(){
   const list = homesFiltered(), q = query.trim();
   return `<input class="search" id="q" type="search" placeholder="Search by name, area or MRT" value="${esc(query)}" autocomplete="off" enterkeyhint="search" style="margin-bottom:10px">
     <div class="tool"><div class="scrollx">${FILTERS.map(([k,l,f]) => `<button class="chip f" type="button" data-filter="${k}" aria-pressed="${filter===k}">${esc(l)} ${units.filter(f).length}</button>`).join("")}</div>
-    <label style="font-size:13px;color:var(--muted)">Sort <select id="sort"><option value="dist" ${sort==="dist"?"selected":""}>Closest to Kovan</option><option value="hearts" ${sort==="hearts"?"selected":""}>Most hearts</option><option value="price" ${sort==="price"?"selected":""}>Lowest price</option><option value="value" ${sort==="value"?"selected":""}>Best vs fair value</option><option value="school" ${sort==="school"?"selected":""}>Easiest school runs</option></select></label></div>
+    <label style="font-size:13px;color:var(--muted)">Sort <select id="sort"><option value="dist" ${sort==="dist"?"selected":""}>Closest to Kovan</option><option value="hearts" ${sort==="hearts"?"selected":""}>Most hearts</option><option value="price" ${sort==="price"?"selected":""}>Lowest price</option><option value="value" ${sort==="value"?"selected":""}>Best vs fair value</option><option value="school" ${sort==="school"?"selected":""}>Easiest school runs</option><option value="claude" ${sort==="claude"?"selected":""}>Claude's picks</option></select></label></div>
     <div id="homeList">${homeList(list, q)}</div>`;
 }
 function homeList(list, q){
@@ -801,7 +810,7 @@ function renderSheet(fresh){
       ${r.askingNote?`<div style="font-size:12.5px;color:var(--muted);margin-top:4px">${esc(r.askingNote)}</div>`:""}
       ${r.fairBasis?`<div style="font-size:12.5px;color:var(--muted);margin-top:4px">Fair value basis: ${esc(r.fairBasis)}</div>`:""}
       <div style="margin-top:10px">${bar(r)}</div>
-      <div class="hearts" style="margin-top:12px">${KEYS.map(k => heartsRow(r,k)).join("")}</div></div>
+      <div class="hearts" style="margin-top:12px">${KEYS.map(k => heartsRow(r,k)).join("")}${claudeRow(r)}</div></div>
     <div class="box"><h4>Viewing</h4>
       <div class="form"><label class="w">Status<select id="stSel">${STATUSES.map(s => `<option value="${s}" ${s===st?"selected":""}>${esc(STATUS_LABEL[s])}</option>`).join("")}</select></label>
       <label class="w">Date & time<input id="apptIn" type="datetime-local" value="${esc(r.appt||"")}" ${st==="Booked"?"":"disabled"} title="${st==="Booked"?"":"Set status to Viewing booked to pick a time"}"></label>
@@ -1258,6 +1267,7 @@ document.addEventListener("click", ev => {
   if(t.classList.contains("tab")){ tab = t.dataset.tab; try{localStorage.setItem("hs-tab",tab);}catch(e){} render(); window.scrollTo(0,0); return; }
   if(t.id === "askBtn"){ openAsk(); return; }
   if(t.id === "bellBtn"){ openActivity(); return; }
+  if(t.dataset.clwhy){ const id = t.dataset.clwhy; openWhy.has(id) ? openWhy.delete(id) : openWhy.add(id); if(sheet && sheet.type === "unit") keepScroll(renderSheet); else { const y = window.scrollY; render(); window.scrollTo(0, y); } return; }
   if(t.id === "badgeBtn"){ enableBadge(); return; }
   if(t.dataset.gotab){ tab = t.dataset.gotab; try{localStorage.setItem("hs-tab",tab);}catch(e){} render(); window.scrollTo(0,0); return; }
   if(t.dataset.actopen){ openUnit(t.dataset.actopen, t.dataset.chat === "1"); return; }
