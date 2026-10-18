@@ -35,6 +35,17 @@ that listing in a rescan.
   to one short plain sentence, e.g. "Asking down from S$2.88M to S$2.75M".
   Don't set them when nothing meaningful changed (e.g. only checkedAt).
 
+## School runs are the deciding rule (18 Oct 2026)
+Everything the research finds or suggests on its own (rescans, "more like X"
+ideas, notes recommending other homes) must have a PLMGS run of "easy" or "ok"
+in `tools/transit.py`. Never add, suggest or argue for a home with a "hard"
+school run, however good it looks otherwise — condo or landed.
+Homes Adrian or Shernice paste themselves are their deliberate choice: they
+add these when a home might be worth a bigger change in lifestyle and school
+logistics. Always add them, tag the school run under `concerns` (e.g. "School
+runs hard (PLMGS ~59 min)"), and don't push back or recommend against them in
+notes. Agent suggestions follow the same rule as pasted links.
+
 ## Refined criteria (from their ratings, 17 Oct 2026)
 These sharpen the criteria in your instructions. For **rescans**, only add homes
 that meet all of them. If you are reading this after a rescan, re-check every
