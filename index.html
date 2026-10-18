@@ -426,6 +426,7 @@ async function save(id, data, okMsg){
 /* ---------- Render: shell ---------- */
 function render(){
   if(!me) return;
+  updateAppBadge();
   document.querySelectorAll(".tab").forEach(b => b.setAttribute("aria-current", b.dataset.tab === tab ? "page" : "false"));
   const head = `<header class="top"><div class="brand"><h1>Our Kovan Home</h1><p>${units.filter(u=>u.status!=="Rejected").length} homes in play · within 6 km of Kovan</p></div>
     <div class="who"><button class="bell" id="bellBtn" type="button" aria-label="Activity${unreadActs().length ? ", " + unreadActs().length + " new" : ""}">🔔${unreadActs().length ? `<span class="bdg">${unreadActs().length > 99 ? "99+" : unreadActs().length}</span>` : ""}</button>${KEYS.map(k => `<span class="av ${k} ${k===me.key?"me":""}" title="${esc(NAME[k])}">${esc(NAME[k][0])}</span>`).join("")}
@@ -707,6 +708,19 @@ function newCommentsFor(r){
   if(!me) return 0; const since = [actRead[me.key] || "", seenAt(r, me.key) || ""].sort().pop();
   return acts.filter(a => a.kind === "comment" && a.unitId === r.id && a.by !== me.key && actTime(a) > since).length;
 }
+/* Number on the Home Screen icon (iOS 16.4+ home-screen app, needs notification permission). */
+const canBadge = () => "setAppBadge" in navigator;
+const badgeAsk = () => canBadge() && "Notification" in window && Notification.permission === "default";
+function updateAppBadge(){
+  if(!canBadge()) return;
+  const n = unreadActs().length;
+  try { (n ? navigator.setAppBadge(n) : navigator.clearAppBadge()).catch(()=>{}); } catch(e){}
+}
+async function enableBadge(){
+  try { const r = await Notification.requestPermission(); if(r === "granted"){ updateAppBadge(); toast("Done — the app icon will show new activity"); } else toast("Notifications are off — you can turn them on in iPhone Settings › Notifications"); }
+  catch(e){ toast("This phone doesn't support icon badges"); }
+  if(sheet && sheet.type === "activity") renderActivitySheet();
+}
 function openActivity(){
   sheet = {type:"activity", since: actRead[me.key] || "", f:"all"};
   const now = new Date().toISOString(); actRead = Object.assign({}, actRead, {[me.key]: now});
@@ -743,7 +757,7 @@ function renderActivitySheet(){
   const sc0 = $("sheetScroll"), keep = sheet.type === "activity" && sc0 ? sc0.scrollTop : 0;
   $("sheetRoot").innerHTML = `<div class="scrim" id="scrim"></div><div class="sheet" role="dialog" aria-modal="true" aria-label="Activity">
     <div class="hd"><h3>Activity${nNew ? ` <span class="muted" style="font-size:14px;font-weight:600">· ${nNew} new</span>` : ""}</h3><button class="close" id="closeSheet" type="button" aria-label="Close">×</button></div>
-    <div class="sc" id="sheetScroll"><div class="chips" style="margin:0 0 6px">${chips}</div>
+    <div class="sc" id="sheetScroll">${badgeAsk() ? `<button class="banner" type="button" id="badgeBtn" style="margin:0 0 10px">🔔 <span class="grow"><b>Show new activity on the app icon</b><br><span class="muted" style="font-size:13px">Tap, then Allow — a red number appears on the Home Screen icon</span></span>›</button>` : ""}<div class="chips" style="margin:0 0 6px">${chips}</div>
       ${rows || `<div style="color:var(--muted);font-size:14px;padding:18px 4px">Nothing here yet. Comments, ${esc(AGENT())}'s updates, hearts and 👎 will show up here.</div>`}</div></div>`;
   $("scrim").onclick = closeSheet; $("closeSheet").onclick = closeSheet;
   const sc = $("sheetScroll"); if(sc) sc.scrollTop = keep;
@@ -1050,7 +1064,7 @@ async function applyBoardReplies(){
   finally { applyingBoard = false; }
 }
 const syncAll = () => { applyBoardReplies(); syncBoardFromApp(); };
-document.addEventListener("visibilitychange", () => { if(document.visibilityState === "visible") syncAll(); });
+document.addEventListener("visibilitychange", () => { if(document.visibilityState === "visible") syncAll(); else updateAppBadge(); });
 
 /* Free-time quick picks */
 /* Availability windows: {date:"YYYY-MM-DD", start:"HH:MM", end:"HH:MM", note}. Each viewing
@@ -1242,6 +1256,7 @@ document.addEventListener("click", ev => {
   if(t.classList.contains("tab")){ tab = t.dataset.tab; try{localStorage.setItem("hs-tab",tab);}catch(e){} render(); window.scrollTo(0,0); return; }
   if(t.id === "askBtn"){ openAsk(); return; }
   if(t.id === "bellBtn"){ openActivity(); return; }
+  if(t.id === "badgeBtn"){ enableBadge(); return; }
   if(t.dataset.gotab){ tab = t.dataset.gotab; try{localStorage.setItem("hs-tab",tab);}catch(e){} render(); window.scrollTo(0,0); return; }
   if(t.dataset.actopen){ openUnit(t.dataset.actopen, t.dataset.chat === "1"); return; }
   if(t.dataset.actf){ sheet.f = t.dataset.actf; renderActivitySheet(); return; }
