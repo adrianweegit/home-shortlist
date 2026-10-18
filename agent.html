@@ -59,6 +59,8 @@ textarea{min-height:70px;resize:vertical}
 </style>
 </head>
 <body>
+<div id="previewBar" hidden style="position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:10px;padding:10px 16px;background:var(--kaya-soft,#FBF1D6);border-bottom:1px solid rgba(0,0,0,.08);font-size:14px">
+  <a href="./" style="font-weight:700;color:inherit;text-decoration:none;font-size:15px">‹ Back to our app</a><span style="flex:1"></span><span style="opacity:.7">Preview of Andrew's board</span></div>
 <div class="wrap" id="root"><h1>Loading…</h1></div>
 <div class="bar" id="bar" hidden><div class="in"><span id="msg" style="font-size:13px;flex:1"></span><button class="send" id="send" type="button" disabled>Save changes</button></div></div>
 <script src="config.js"></script>
@@ -111,6 +113,8 @@ function availHTML(){
     return `<div class="win ${full?"full":""}"><b>${esc(winLabel(w))}</b>${full?` <span class="pill">Fully booked</span>`:""}${ins.length?`<div class="meta">Booked: ${ins.map(b => esc(fmtT(b.at.slice(11,16)) + " " + b.label)).join(" · ")}</div>`:""}</div>`; }).join("")}${outside.length ? `<div class="win"><b>Other confirmed viewings</b><div class="meta">${outside.map(b => esc(fmtWhen(b.at) + " " + b.label)).join(" · ")}</div></div>` : ""}</div>`;
 }
 const token = (location.hash || "").replace(/^#/, "");
+const PREVIEW = /[?&]preview=1/.test(location.search); // opened from our app: show a way back, don't mark Andrew's visit
+if(PREVIEW) document.getElementById("previewBar").hidden = false;
 const root = $("root");
 if(!/^[A-Za-z0-9]{24,}$/.test(token)){ root.innerHTML = `<h1>Link not recognised</h1><p class="sub">Please use the full link from the WhatsApp message.</p>`; return; }
 
@@ -149,7 +153,7 @@ call(`${BASE}/hs_board/${token}?key=${FB.apiKey}`).then(async r => {
   Object.keys(B.items || {}).forEach(id => { const p = R[id] || {}, it = B.items[id], up = it.status === "upcoming" && it.appt;
     state[id] = {state: up ? "confirmed" : (p.state || "pending"), appt: up ? it.appt : (p.appt || ""), view: p.view || "", counter: p.counter || null}; });
   render(); $("bar").hidden = false;
-  commit({}, [], ["agentSeenAt"]).catch(() => {}); // mark this visit
+  if(!PREVIEW) commit({}, [], ["agentSeenAt"]).catch(() => {}); // mark this visit (not when we preview it)
 }).catch(e => {
   root.innerHTML = e && e.gone
     ? `<h1>This link no longer works</h1><p class="sub">Please ask Adrian for the latest link.</p>`
