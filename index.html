@@ -483,7 +483,8 @@ function card(r){
   const k = kind(r);
   const st = STATUSES.includes(r.status) ? r.status : "Unviewed";
   const loves = (r.loves||[]).slice(0,4).map(t => `<span class="chip love">${esc(t)}</span>`).join("");
-  const concerns = autoConcerns(r).concat(r.concerns||[]).slice(0,5).map(t => `<span class="chip concern">${esc(t)}</span>`).join("");
+  const allC = (r.concerns||[]).slice().sort((a,b) => (/^Viewed/.test(b)) - (/^Viewed/.test(a))).concat(autoConcerns(r));
+  const concerns = allC.slice(0,6).map(t => `<span class="chip concern">${esc(t)}</span>`).join("") + (allC.length > 6 ? `<span class="chip concern">+${allC.length-6} more</span>` : "");
   const inCmp = compare.includes(r.id);
   const lc = r.lastComment;
   return `<article class="card ${st==="Rejected"?"rej":""}">
