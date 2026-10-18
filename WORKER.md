@@ -72,6 +72,12 @@ Format (GF / penthouse / high floor / townhouse) is not a deciding factor, and
 freehold is not a plus on its own. Budget, lease and 6 km rules are unchanged,
 except for landed homes below.
 
+## Lease exception for penthouses near an MRT (18 Oct 2026)
+The usual rule is at least 80 years of lease left. For **penthouses within
+about 600 m (≈8-min walk) of an MRT station**, accept **70 years or more**.
+Note the lease under `concerns` when it is below 80 (e.g. "Lease ~73 yrs").
+All other rules (budget, school runs, size, 6 km) still apply.
+
 ## Landed homes (added 17 Oct 2026)
 Landed homes are now in scope too: cluster houses, strata terraces, townhouses
 and other landed homes within 6 km of Kovan.
