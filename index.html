@@ -297,6 +297,7 @@ const CFG = window.HOME_SHORTLIST;
 const PEOPLE = CFG.people;
 const KEYS = Object.values(PEOPLE).map(p => p.key);          // ["adrian","shernice"]
 const NAME = Object.fromEntries(Object.values(PEOPLE).map(p => [p.key, p.name]));
+NAME.claude = "Claude";
 const STATUSES = ["Unviewed","Booked","Viewed","Offer","Rejected"];
 const STATUS_LABEL = {Unviewed:"Not viewed", Booked:"Viewing booked", Viewed:"Viewed", Offer:"Offer made", Rejected:"Rejected"};
 const CHECKS = ["West sun","Noise (road / MRT / pool)","Refuse chute & bin centre","Patio / roof cover approved","Leaks or water stains","Mobile signal","Lift & car park distance","MCST minutes & sinking fund","Bedroom sizes fit our beds"];
