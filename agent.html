@@ -56,6 +56,10 @@ textarea{min-height:70px;resize:vertical}
 .ok{color:var(--pandan);font-weight:600;font-size:13px}
 .err{color:var(--rose);font-size:13px}
 [hidden]{display:none!important}
+.prio{display:inline-block;font-size:11.5px;font-weight:700;border-radius:999px;padding:2px 8px;margin-left:6px;vertical-align:middle;background:#FBE4E8;color:#B23A55}
+.ask{margin-top:8px;font-size:13.5px;background:#FBF1D6;border-radius:10px;padding:8px 10px}
+.tom li{margin:4px 0}
+.slotbtn{margin-top:10px;width:100%;padding:10px;border-radius:12px;border:1px dashed currentColor;background:none;font:inherit;font-weight:600;color:inherit;cursor:pointer}
 </style>
 </head>
 <body>
@@ -108,9 +112,10 @@ function availHTML(){
   const live = (B.free || []).filter(w => !winEnded(w));
   const bk = bookings(null);
   const outside = bk.filter(b => new Date(b.at) > new Date() && !live.some(w => inWin(w, [b]).length)).sort((a,b) => a.at.localeCompare(b.at));
-  if(!live.length && !outside.length) return "";
+  if(!live.length && !outside.length) return `<div class="box"><h4>When they're free</h4><p class="meta" style="margin:0">No times shared yet.</p>${B.slotAsk ? `<div class="ask" style="margin-top:10px">✓ You asked for viewing slots — they'll add times.</div>` : `<button class="slotbtn" type="button" id="slotBtn">🙋 Ask them for viewing slots</button>`}</div>`;
+  const slot = B.slotAsk ? `<div class="ask" style="margin-top:10px">✓ You asked for more slots${B.slotAsk.note ? ` (“${esc(B.slotAsk.note)}”)` : ""} — they'll add more times.</div>` : slotOpen ? `<div style="margin-top:10px"><label>Anything specific? (optional)<input id="slotNote" maxlength="160" placeholder="e.g. Seller only free weekday evenings"></label><button class="send" type="button" id="slotSend" style="margin-top:8px;width:100%">Ask for more viewing slots</button></div>` : `<button class="slotbtn" type="button" id="slotBtn">🙋 Need more viewing slots?</button>`;
   return `<div class="box"><h4>When they're free</h4><p class="meta" style="margin:0 0 4px">Each viewing is planned as 1 hour, including travel.</p>${live.map(w => { const ins = inWin(w, bk), full = winFull(w, ins);
-    return `<div class="win ${full?"full":""}"><b>${esc(winLabel(w))}</b>${full?` <span class="pill">Fully booked</span>`:""}${ins.length?`<div class="meta">Booked: ${ins.map(b => esc(fmtT(b.at.slice(11,16)) + " " + b.label)).join(" · ")}</div>`:""}</div>`; }).join("")}${outside.length ? `<div class="win"><b>Other confirmed viewings</b><div class="meta">${outside.map(b => esc(fmtWhen(b.at) + " " + b.label)).join(" · ")}</div></div>` : ""}</div>`;
+    return `<div class="win ${full?"full":""}"><b>${esc(winLabel(w))}</b>${full?` <span class="pill">Fully booked</span>`:""}${ins.length?`<div class="meta">Booked: ${ins.map(b => esc(fmtT(b.at.slice(11,16)) + " " + b.label)).join(" · ")}</div>`:""}</div>`; }).join("")}${outside.length ? `<div class="win"><b>Other confirmed viewings</b><div class="meta">${outside.map(b => esc(fmtWhen(b.at) + " " + b.label)).join(" · ")}</div></div>` : ""}${slot}</div>`;
 }
 const token = (location.hash || "").replace(/^#/, "");
 const PREVIEW = /[?&]preview=1/.test(location.search); // opened from our app: show a way back, don't mark Andrew's visit
@@ -142,7 +147,18 @@ const commit = (fields, mask, transforms) => call(`${BASE}:commit?key=${FB.apiKe
 
 const SECTIONS = [["new","Needs a viewing time","New homes, or ones still to be scheduled"],["upcoming","Upcoming viewings",""],["offer","Offers","Our offers and the seller's response"],["viewed","Viewed","Share anything new after the viewing"],["closed","Closed","No need to follow up"]];
 const STATES = [["confirmed","✅ Confirmed"],["pending","⏳ Checking"],["sold","🏷️ Sold"]];
-let B = null, state = {}, lastSeen = 0, dirty = false, suggestDraft = {url:"", note:""};
+let B = null, state = {}, lastSeen = 0, dirty = false, suggestDraft = {url:"", note:""}, slotOpen = false;
+function wireSlots(){
+  const b = $("slotBtn"); if(b) b.onclick = () => { slotOpen = true; const a = $("avail"); a.innerHTML = availHTML(); wireSlots(); const n = $("slotNote"); if(n) n.focus(); };
+  const s = $("slotSend"); if(s) s.onclick = async () => {
+    s.disabled = true; s.textContent = "Sending…";
+    const note = ($("slotNote").value || "").trim().slice(0,160);
+    const suggestions = (B.suggestions || []).concat([{kind:"slots", note, at:new Date().toISOString()}]);
+    try { const r = await commit({suggestions: enc(suggestions)}, ["suggestions"], ["replyAt"]); if(!r.ok) throw new Error("http " + r.status);
+      B.suggestions = suggestions; B.slotAsk = {note, at:new Date().toISOString()}; slotOpen = false; $("avail").innerHTML = availHTML(); wireSlots(); }
+    catch(e){ s.disabled = false; s.textContent = "Couldn't send — try again"; }
+  };
+}
 
 call(`${BASE}/hs_board/${token}?key=${FB.apiKey}`).then(async r => {
   if(r.status === 403 || r.status === 404){ const e = new Error("gone"); e.gone = true; throw e; }
@@ -161,12 +177,15 @@ call(`${BASE}/hs_board/${token}?key=${FB.apiKey}`).then(async r => {
 });
 
 const isChanged = it => it.changedAt && Date.parse(it.changedAt) > lastSeen;
+const PR = {top:0, interested:1, low:2};
+const prRank = it => PR[it.priority] ?? 1;
 function card(id, it){
   const st = state[id], ch = isChanged(it), live = it.status !== "closed";
   return `<div class="box ${ch?"changed":""}" id="h-${esc(id)}">
-    <h3>${esc(it.name)}</h3>
+    <h3>${esc(it.name)}${it.priority === "top" && live ? `<span class="prio">🔥 Top of mind</span>` : ""}</h3>
     <div class="meta">${esc(it.area||"")}${it.url?` · <a href="${esc(it.url)}" target="_blank" rel="noopener">Listing ↗</a>`:""}${it.status==="upcoming"&&it.appt?` · <b>${esc(fmtWhen(it.appt))}</b>`:""}${it.status==="closed"?` · ${esc(it.closedReason||"")}`:""}</div>
     ${ch && it.changeNote ? `<div class="chg">🔔 ${esc(it.changeNote)}</div>` : ""}
+    ${live && it.ask ? `<div class="ask"><b>Please check for us:</b> ${esc(it.ask)}</div>` : ""}
     ${it.status === "offer" || it.ourOffer ? offerBlock(id, it) : ""}
     ${live && it.status !== "offer" ? `<div class="opts">${STATES.map(([k,l]) => `<button class="opt" type="button" data-h="${esc(id)}" data-st="${k}" aria-pressed="${st.state===k}">${l}</button>`).join("")}</div>
       <div ${st.state==="confirmed"?"":"hidden"}><label>Viewing date &amp; time<div class="dt ${st.appt?"":"empty"}"><span>${st.appt?esc(fmtWhen(st.appt)):"Tap to set date &amp; time"}</span><input type="datetime-local" data-appt="${esc(id)}" value="${esc(st.appt)}"></div></label><div class="warn" data-warn="${esc(id)}" ${st.state==="confirmed"&&clash(id, st.appt)?"":"hidden"}>⚠️ ${esc(clash(id, st.appt))}</div></div>` : ""}
@@ -187,9 +206,12 @@ function render(){
   const from = B.from || "Adrian";
   let h = `<h1>Hi ${esc(B.agentName || "")} 👋</h1><p class="sub">${esc(from)} &amp; Shernice's viewing board. Update times, offers and your views here any time — it goes straight to them. Bookmark this page.</p>`;
   if(lastSeen && changed.length) h += `<div class="news"><b>Since your last visit</b><ul>${changed.map(([id, it]) => `<li><a href="#h-${esc(id)}" data-jump="${esc(id)}">${esc(it.name)}</a>: ${esc(it.changeNote||"updated")}</li>`).join("")}</ul></div>`;
+  const tom = items.filter(([, it]) => it.priority === "top" && it.status !== "closed");
+  if(tom.length) h += `<div class="box"><h4>What's top of mind for us now</h4><p class="meta" style="margin:0 0 4px">This changes as we view homes and find new ones.</p><ul class="tom" style="margin:4px 0 0;padding-left:18px">${tom.map(([id, it]) => `<li><a href="#h-${esc(id)}" data-jump="${esc(id)}"><b>${esc(it.name)}</b></a>${it.status==="upcoming"&&it.appt?` · ${esc(fmtWhen(it.appt))}`:it.status==="new"?" · needs a viewing time":""}</li>`).join("")}</ul></div>`;
+  if((B.wants||[]).length) h += `<details class="box"><summary style="font-weight:700;cursor:pointer">What we're looking for</summary><ul style="margin:8px 0 0;padding-left:18px">${B.wants.map(w => `<li style="margin:3px 0">${esc(w)}</li>`).join("")}</ul><p class="meta" style="margin:8px 0 0">Handy when you suggest a home below.</p></details>`;
   h += `<div id="avail">${availHTML()}</div>`;
   SECTIONS.forEach(([k, title, hint]) => {
-    const list = items.filter(([, it]) => it.status === k).sort((a,b) => (a[1].appt||"").localeCompare(b[1].appt||"") || a[1].name.localeCompare(b[1].name));
+    const list = items.filter(([, it]) => it.status === k).sort((a,b) => (k === "upcoming" ? 0 : prRank(a[1]) - prRank(b[1])) || (a[1].appt||"").localeCompare(b[1].appt||"") || a[1].name.localeCompare(b[1].name));
     if(!list.length) return;
     h += `<h2 class="sec">${esc(title)} <small>${list.length}${hint?" · "+esc(hint):""}</small></h2>` + list.map(([id, it]) => card(id, it)).join("");
   });
@@ -197,7 +219,7 @@ function render(){
   h += `<h2 class="sec">Suggest a home <small>a unit you think suits them</small></h2>
     <div class="box"><label>Listing link<input id="sgUrl" type="url" inputmode="url" placeholder="https://www.propertyguru.com.sg/listing/…" value="${esc(suggestDraft.url)}"></label>
     <label>Why it suits them (optional)<input id="sgNote" maxlength="200" value="${esc(suggestDraft.note)}"></label>
-    ${(B.suggestions||[]).length ? `<div class="meta" style="margin-top:8px">Already suggested: ${B.suggestions.map(s => esc((s.url||"").replace(/^https?:\/\/(www\.)?/,"").slice(0,40))).join(", ")}</div>` : ""}</div>
+    ${(B.suggestions||[]).filter(x => x.url).length ? `<div class="meta" style="margin-top:8px">Already suggested: ${B.suggestions.filter(x => x.url).map(s => esc((s.url||"").replace(/^https?:\/\/(www\.)?/,"").slice(0,40))).join(", ")}</div>` : ""}</div>
     <h2 class="sec">Note for them <small>optional</small></h2><div class="box"><textarea id="note" maxlength="800" placeholder="Anything else">${esc(B.agentNote||"")}</textarea></div>`;
   root.innerHTML = h;
   root.querySelectorAll("[data-st]").forEach(b => b.onclick = () => { state[b.dataset.h].state = b.dataset.st; touch(); const y = scrollY; render(); scrollTo(0, y); });
@@ -207,10 +229,12 @@ function render(){
   root.querySelectorAll("[data-cnote]").forEach(t => t.oninput = () => { const id = t.dataset.cnote; state[id].counter = Object.assign({}, state[id].counter, {note: t.value}); touch(); });
   ["sgUrl","sgNote"].forEach(k => { $(k).oninput = () => { suggestDraft[k === "sgUrl" ? "url" : "note"] = $(k).value; touch(); }; });
   $("note").oninput = () => { B.agentNote = $("note").value; touch(); };
+  wireSlots();
+  root.querySelectorAll("[data-jump]").forEach(l => l.onclick = ev => { ev.preventDefault(); const el = document.getElementById("h-" + l.dataset.jump); if(el) el.scrollIntoView({behavior:"smooth", block:"start"}); }); // keep the board token in the URL
 }
 function refreshWarnings(){
   root.querySelectorAll("[data-warn]").forEach(el => { const id = el.dataset.warn, s = state[id], msg = s.state === "confirmed" ? clash(id, s.appt) : ""; el.hidden = !msg; el.textContent = "⚠️ " + msg; });
-  const a = $("avail"); if(a) a.innerHTML = availHTML();
+  const a = $("avail"); if(a) { a.innerHTML = availHTML(); wireSlots(); }
 }
 function touch(){ dirty = true; $("send").disabled = false; $("msg").textContent = ""; }
 $("send").onclick = async () => {

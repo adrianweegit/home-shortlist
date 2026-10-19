@@ -816,6 +816,9 @@ function renderSheet(fresh){
       <label class="w">Date & time<input id="apptIn" type="datetime-local" value="${esc(r.appt||"")}" ${st==="Booked"?"":"disabled"} title="${st==="Booked"?"":"Set status to Viewing booked to pick a time"}"></label>
       <label class="w">Agent (name & phone)<input id="agentIn" value="${esc(r.agent||"")}" placeholder="e.g. Matthew Tan 8132 8152"></label></div></div>
     ${["Booked","Viewed","Offer"].includes(st) || r.offer || r.counter ? offerBox(r) : ""}
+    ${onBoard(r.id) ? `<div class="box"><h4>Ask ${esc(AGENT())} to check</h4><p style="font-size:12.5px;color:var(--muted);margin:0 0 6px">Shown on his board as “Please check for us”.${typeof r.agentAsk === "string" ? "" : " Suggested by Claude — edit if you like."}</p>
+      <textarea id="askIn" maxlength="300" rows="2" style="width:100%;box-sizing:border-box;font:inherit;padding:8px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink)">${esc(askOf(r))}</textarea>
+      <div class="chips" style="margin-top:6px"><button class="btn sm primary" type="button" id="askSave">Save</button>${typeof r.agentAsk === "string" ? `<button class="btn sm" type="button" id="askReset">Use Claude's suggestion</button>` : ""}</div></div>` : ""}
     <div class="box"><h4>Loves & concerns</h4>
       <div class="chips">${(r.loves||[]).map((t,i) => `<span class="chip love">${esc(t)}<button class="x" type="button" data-untag="loves" data-i="${i}" aria-label="Remove">×</button></span>`).join("")}
       ${autoConcerns(r).map(t => `<span class="chip concern">${esc(t)}</span>`).join("")}
@@ -862,6 +865,8 @@ function renderSheet(fresh){
   const addTag = kindKey => { const v = $("tagIn").value.trim(); if(!v) return; $("tagIn").value = ""; save(r.id, {[kindKey]: FV.arrayUnion(v)}); };
   $("tagForm").onsubmit = ev => { ev.preventDefault(); addTag("loves"); };
   $("addConcern").onclick = () => addTag("concerns");
+  if($("askSave")) $("askSave").onclick = () => save(r.id, {agentAsk: $("askIn").value.trim()}, "Saved — " + AGENT() + "'s board updates shortly");
+  if($("askReset")) $("askReset").onclick = () => save(r.id, {agentAsk: FV.delete()}, "Back to Claude's suggestion");
   const eb = $("editBtn"); if(eb) eb.onclick = () => { sheet.edit = true; sheet.confirmDel = false; renderSheet(); };
   const ce = $("cancelEdit"); if(ce) ce.onclick = () => { sheet.edit = false; renderSheet(); };
   const del = $("delBtn"); if(del) del.onclick = async () => { if(!sheet.confirmDel){ sheet.confirmDel = true; renderSheet(); return; } try{ await unitRef(r.id).delete(); toast("Deleted"); closeSheet(); }catch(e){ toast("Couldn't delete"); } };
@@ -956,6 +961,36 @@ async function ensureBoard(){
 }
 
 /* App -> board: keep each shared home's section, time and our offer in step with the app. */
+/* What Andrew sees about our priorities (no hearts, budget or fair values). */
+function priorityOf(u){
+  const active = units.filter(x => x.status !== "Rejected" && !x.nopeRejected && score(x) > 0).sort((a,b) => score(b) - score(a));
+  const top3 = active.slice(0,3).map(x => x.id);
+  if(top3.includes(u.id) || KEYS.every(k => ratingOf(u,k) >= 4)) return "top";
+  if(score(u) > 0 || ["Booked","Viewed","Offer"].includes(u.status)) return "interested";
+  return "low";
+}
+function suggestAsk(u){
+  const c = (u.concerns || []).join(" | ") + " | " + (u.format || "");
+  const q = [];
+  if(!u.floorPlanUrl) q.push("Floor plan please — is there an indoor dining area, a yard, and decent bedroom sizes?");
+  if(/floor (level )?not stated|floor tbc|level not stated|floor not stated|confirm #01/i.test(c)) q.push("Which floor is it?");
+  if(/pes|patio/i.test(c) && /confirm|not stated|to confirm|screen|pool-facing|privacy/i.test(c)) q.push("Is the patio private and screened, and what does it face?");
+  if(/renovation/i.test(c)) q.push("How dated is it inside?");
+  if(/tenanted/i.test(c)) q.push("When does the tenancy end?");
+  return q.slice(0,2).join(" ");
+}
+const askOf = u => typeof u.agentAsk === "string" ? u.agentAsk : suggestAsk(u);
+function boardWants(){
+  const tr = places.map(p => p.short || p.label).filter(Boolean);
+  return ["4 bedrooms (or 3 + study); about 1,600 sqft+ for condos built after ~2012, 1,400+ for older ones",
+    "A proper indoor dining area — not a table on the balcony",
+    "A yard, utility or service balcony for laundry",
+    "Common bedrooms that fit a queen bed with room to move",
+    "Ground floor with a private, screened patio; a penthouse with terrace; or a high floor with a view. No low floors facing the pool, guardhouse or drop-off",
+    tr.length ? "Easy weekday trips to " + tr.join(" and ") : "",
+    "Within about 6 km of Kovan, with 80+ years of lease left (70+ for penthouses near an MRT)",
+    "Landed homes (cluster / terrace) are fine too; we'd skip townhouses above shops"].filter(Boolean);
+}
 function deriveItem(u){
   if(!u) return {status:"closed", closedReason:"Removed from our list", appt:""};
   if(u.nopeRejected || u.status === "Rejected") return {status:"closed", closedReason:"No longer interested", appt:""};
@@ -979,6 +1014,9 @@ async function syncBoardFromApp(){
       if(!fromAgent) notes.push(d.status === "closed" ? d.closedReason : "Moved to " + SECTION[d.status]);
     } else if(d.status === "upcoming" && d.appt !== it.appt && (replies[id]||{}).appt !== d.appt) notes.push("Viewing time changed to " + fmtWhen(d.appt));
     if(stable(off) !== stable(it.ourOffer || null) && off) notes.push(`Our offer: ${fmtM(off.amountM)}${off.note ? " — " + off.note : ""}`);
+    if(u){ const pr = priorityOf(u), ask = askOf(u);
+      if(pr !== (it.priority||"")) flat[`items.${id}.priority`] = pr;
+      if(ask !== (it.ask||"")) flat[`items.${id}.ask`] = ask; }
     const changed = d.status !== it.status || d.appt !== (it.appt||"") || d.closedReason !== (it.closedReason||"") || stable(off) !== stable(it.ourOffer || null);
     if(!changed) return;
     Object.assign(flat, {[`items.${id}.status`]:d.status, [`items.${id}.appt`]:d.appt, [`items.${id}.closedReason`]:d.closedReason, [`items.${id}.ourOffer`]:off});
@@ -986,6 +1024,7 @@ async function syncBoardFromApp(){
   });
   const busy = units.filter(u => u.status === "Booked" && u.appt && !(board.items || {})[u.id]).map(u => ({at:u.appt})).sort((a,b) => a.at.localeCompare(b.at));
   if(stable(busy) !== stable(board.busy || [])) flat.busy = busy;
+  const wants = boardWants(); if(stable(wants) !== stable(board.wants || [])) flat.wants = wants;
   if(!Object.keys(flat).length) return;
   syncing = true;
   try { await restPatch("hs_board/" + agent.boardToken, flat); } catch(e){ console.warn("board sync later:", e.message); }
@@ -1065,11 +1104,17 @@ async function applyBoardReplies(){
       const keys = Object.keys(upd);
       if(keys.length || tf.length) writes.push({update:{name:`${FS_DOCS()}/hs_units/${id}`, fields:fsEnc(upd).mapValue.fields}, updateMask:{fieldPaths:keys.map(fp)}, updateTransforms:tf, currentDocument:{exists:true}});
     }
+    let slotAsk = null;
     sugg.slice(done).forEach(sg => {
+      if(sg && sg.kind === "slots"){
+        writes.push({update:{name:`${FS_DOCS()}/hs_meta/act_${randToken(20)}`, fields:fsEnc({kind:"comment", by:"agent", unitId:"", unitName:"", text:"Asked for more viewing slots" + (sg.note ? ": " + sg.note : ""), actAt:now}).mapValue.fields}, currentDocument:{exists:false}});
+        slotAsk = {note: sg.note || "", at: sg.at || now};
+      }
       if(sg && sg.url) writes.push({update:{name:`${FS_DOCS()}/hs_meta/act_${randToken(20)}`, fields:fsEnc({kind:"suggest", by:"agent", unitId:"", unitName:"", text:(sg.note ? sg.note + " — " : "") + sg.url, actAt:now}).mapValue.fields}, currentDocument:{exists:false}});
       if(sg && sg.url) writes.push({update:{name:`${FS_DOCS()}/hs_requests/${randToken(20)}`, fields:fsEnc({type:"add", url:sg.url, note:sg.note||"", suggestedBy:AGENT(), by:"agent", status:"queued", createdAt:now}).mapValue.fields}, currentDocument:{exists:false}});
     });
-    writes.push({update:{name:bpath, fields:fsEnc({appliedReplies:R, appliedSuggestions:sugg.length}).mapValue.fields}, updateMask:{fieldPaths:["appliedReplies","appliedSuggestions"]}, currentDocument:{updateTime:bdoc.updateTime}});
+    const bf = {appliedReplies:R, appliedSuggestions:sugg.length}; if(slotAsk) bf.slotAsk = slotAsk;
+    writes.push({update:{name:bpath, fields:fsEnc(bf).mapValue.fields}, updateMask:{fieldPaths:Object.keys(bf)}, currentDocument:{updateTime:bdoc.updateTime}});
     await restCall("POST", `${FS_DOCS()}:commit`, {writes});
   } catch(e){ console.warn("Board reply not applied yet:", e && e.message); }
   finally { applyingBoard = false; }
@@ -1141,12 +1186,13 @@ function renderAskSheet(){
     <div class="hd"><h3>${esc(AGENT())}'s board</h3><button class="close" id="closeSheet" type="button" aria-label="Close">×</button></div>
     <div class="sc" id="sheetScroll">
       <div class="box"><h4>Homes</h4>${top.map(row).join("")}${others.length?`<details style="margin-top:6px"><summary style="font-size:13px;color:var(--muted);cursor:pointer">Other homes (${others.length})</summary>${others.map(row).join("")}</details>`:""}</div>
+      ${board && board.slotAsk ? `<div class="dupb" style="border-radius:12px;margin:0 0 10px">🙋 <b>${esc(AGENT())} asked for more viewing slots</b>${board.slotAsk.note ? ` — “${esc(board.slotAsk.note)}”` : ""} <span class="muted">· ${esc(ago(board.slotAsk.at))}</span><br><span class="muted" style="font-size:12.5px">Add a time below and the request clears.</span></div>` : ""}
       <div class="box"><h4>Our availability</h4><p style="font-size:12.5px;color:var(--muted);margin:0 0 4px">Shown at the top of ${esc(AGENT())}'s board, with viewings already booked in each window (1 hour each). Past times drop off by themselves.</p>
         ${availabilityHTML(sheet.free, true)}
         <form id="slotForm"><div class="slotform" style="font-size:11.5px;color:var(--muted);font-weight:600;margin-bottom:-4px"><span>Date</span><span>From</span><span>To</span></div><div class="slotform"><input id="slotDate" type="date" min="${ymd(new Date())}" aria-label="Date"><input id="slotStart" type="time" value="10:00" step="900" aria-label="From"><input id="slotEnd" type="time" value="13:00" step="900" aria-label="To"></div>
           <div class="addtag"><input id="slotNote" placeholder="Note (optional), e.g. Shernice can't join" maxlength="40" autocomplete="off"><button class="btn sm" type="submit">Add</button></div></form></div>
       <button class="btn primary" type="button" id="sendAsk" style="width:100%;justify-content:center;padding:12px;margin-top:12px" ${nNew || freeChanged ? "" : "disabled"}>${nNew ? `Add ${nNew} home${nNew>1?"s":""} & send on WhatsApp` : "Save availability"}</button>
-      <p style="font-size:12px;color:var(--muted);margin:8px 2px 0">${nNew ? `WhatsApp opens with a short message for ${esc(AGENT())} listing the new homes and his board link.` : `Time changes and updates reach ${esc(AGENT())}'s board quietly — he sees what changed next time he opens it.`} He only sees the homes on his board, their listing links, your free times and offers you make.</p>
+      <p style="font-size:12px;color:var(--muted);margin:8px 2px 0">${nNew ? `WhatsApp opens with a short message for ${esc(AGENT())} listing the new homes and his board link (your free times stay on the board).` : `Time changes and updates reach ${esc(AGENT())}'s board quietly — he sees what changed next time he opens it.`} He only sees the homes on his board, their listing links, your free times and offers you make.</p>
       ${link ? `<div class="box"><h4>His board link</h4><div class="chips"><button class="btn sm" type="button" id="copyBoard">Copy link</button><a class="btn sm" href="${esc(link.replace("agent.html#", "agent.html?preview=1#"))}">Open as ${esc(AGENT())}</a><button class="btn sm danger" type="button" id="resetBoard">${sheet.confirmReset ? "Tap again to reset" : "Reset link"}</button></div>
         <p style="font-size:12px;color:var(--muted);margin:8px 0 0">Reset if the link is ever shared by mistake: the old link stops working and WhatsApp opens with the new one.</p></div>` : ""}
     </div></div>`;
@@ -1165,7 +1211,7 @@ function renderAskSheet(){
 // Availability changes save straight away (no separate Save tap needed) once the board exists.
 async function saveFreeNow(){
   if(!agent || !agent.boardToken || !board) return;
-  try { await restPatch("hs_board/" + agent.boardToken, {free: sheet.free.filter(w => !winEnded(w))}); toast("Saved to " + AGENT() + "'s board"); }
+  try { await restPatch("hs_board/" + agent.boardToken, {free: sheet.free.filter(w => !winEnded(w)), slotAsk: null}); toast("Saved to " + AGENT() + "'s board"); }
   catch(e){ toast("Couldn't save availability — tap Save availability to retry"); }
 }
 function waOpen(text){ location.href = "https://wa.me/" + String(agent.phone || "").replace(/\D/g, "") + "?text=" + encodeURIComponent(text); }
@@ -1178,16 +1224,15 @@ async function sendAsk(){
     const now = new Date().toISOString(), flat = {free: sheet.free.filter(w => !winEnded(w))};
     add.forEach(u => {
       const d = deriveItem(u);
-      flat[`items.${u.id}`] = {name:u.name||"", area:(u.area||"").split("·")[0].trim(), url:u.url||"", addedAt:now, status:d.status, appt:d.appt, closedReason:"", ourOffer:null, changedAt:now, changeNote:"New — added by " + NAME[me.key]};
+      flat[`items.${u.id}`] = {name:u.name||"", area:(u.area||"").split("·")[0].trim(), url:u.url||"", addedAt:now, status:d.status, appt:d.appt, closedReason:"", ourOffer:null, changedAt:now, changeNote:"New — added by " + NAME[me.key], priority:priorityOf(u), ask:askOf(u)};
     });
     await restPatch("hs_board/" + token, flat);
     if(!add.length){ toast("Availability saved to " + AGENT() + "'s board"); closeSheet(); return; }
-    const L = [`Hi ${AGENT()}, it's ${NAME[me.key]} here 🙂`, ""];
-    L.push(firstTime ? `Shernice and I have set up a board for you with the homes we're interested in. You can confirm viewing times, share your views and suggest other units there – it updates our list directly:` : `We've added ${add.length > 1 ? add.length + " homes" : "a home"} to your board:`);
-    if(firstTime){ L.push(boardLink(), ""); L.push("Homes on it:"); }
+    const hr = new Date().getHours(), tod = hr < 12 ? "morning" : hr < 18 ? "afternoon" : "evening";
+    const L = [`Hi ${tod} ${AGENT()},`, ""];
+    L.push(firstTime ? `We've set up a board for you with ${add.length > 1 ? add.length + " homes" : "a home"} we'd like to view:` : `We've added ${add.length > 1 ? add.length + " homes" : "a home"} to your board:`);
     add.forEach((u,i) => L.push(`${i+1}. ${u.name}${u.url ? "\n   " + u.url : ""}`));
-    const fr = sheet.free.filter(w => !winEnded(w)); if(fr.length){ L.push("", "We're free (also on your board, with what's already booked):"); fr.forEach(w => L.push("• " + winLabel(w))); }
-    if(!firstTime) L.push("", "Your board:", boardLink());
+    L.push("", "Your board:", boardLink());
     L.push("", "Thanks!");
     closeSheet(); waOpen(L.join("\n"));
   } catch(e){ toast("Couldn't save — check your connection and try again"); btn.disabled = false; btn.textContent = "Try again"; }
