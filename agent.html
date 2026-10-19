@@ -72,7 +72,8 @@ textarea{min-height:70px;resize:vertical}
 .reply textarea{flex:1;min-height:40px;margin:0}
 .rsend{border:0;border-radius:10px;background:var(--pandan);color:#fff;font:inherit;font-weight:700;padding:10px 14px;cursor:pointer}
 .linkbtn{background:none;border:0;padding:0;color:var(--pandan);font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;text-align:left}
-.dropbtn{margin-top:10px;background:none;border:0;color:var(--muted);font:inherit;font-size:13px;padding:4px 0;cursor:pointer}
+.cardfoot{display:flex;gap:16px;margin-top:10px;font-size:13px}.linkbtn.muted{color:var(--muted)}
+.avail summary{cursor:pointer;font-size:14px;line-height:1.45;list-style:none}.avail summary::-webkit-details-marker{display:none}.avail summary::after{content:" ▸";color:var(--muted)}.avail[open] summary::after{content:" ▾"}
 .dropst{margin-top:10px;font-size:13px;background:var(--rose-soft);border-radius:10px;padding:8px 10px}
 .dropst.keep{background:var(--pandan-soft)}
 .dropui{margin-top:10px;border:1px solid var(--line);border-radius:12px;padding:10px}
@@ -135,8 +136,11 @@ function availHTML(){
   const outside = bk.filter(b => new Date(b.at) > new Date() && !live.some(w => inWin(w, [b]).length)).sort((a,b) => a.at.localeCompare(b.at));
   if(!live.length && !outside.length) return `<div class="box"><h4>When they're free</h4><p class="meta" style="margin:0">No times shared yet.</p>${B.slotAsk ? `<div class="ask" style="margin-top:10px">✓ You asked for viewing slots — they'll add times.</div>` : `<button class="slotbtn" type="button" id="slotBtn">🙋 Ask them for viewing slots</button>`}</div>`;
   const slot = B.slotAsk ? `<div class="ask" style="margin-top:10px">✓ You asked for more slots${B.slotAsk.note ? ` (“${esc(B.slotAsk.note)}”)` : ""} — they'll add more times.</div>` : slotOpen ? `<div style="margin-top:10px"><label>Anything specific? (optional)<input id="slotNote" maxlength="160" placeholder="e.g. Seller only free weekday evenings"></label><button class="send" type="button" id="slotSend" style="margin-top:8px;width:100%">Ask for more viewing slots</button></div>` : `<button class="slotbtn" type="button" id="slotBtn">🙋 Need more viewing slots?</button>`;
-  return `<div class="box"><h4>When they're free</h4><p class="meta" style="margin:0 0 4px">Each viewing is planned as 1 hour, including travel.</p>${live.map(w => { const ins = inWin(w, bk), full = winFull(w, ins);
-    return `<div class="win ${full?"full":""}"><b>${esc(winLabel(w))}</b>${full?` <span class="pill">Fully booked</span>`:""}${ins.length?`<div class="meta">Booked: ${ins.map(b => esc(fmtT(b.at.slice(11,16)) + " " + b.label)).join(" · ")}</div>`:""}</div>`; }).join("")}${outside.length ? `<div class="win"><b>Other confirmed viewings</b><div class="meta">${outside.map(b => esc(fmtWhen(b.at) + " " + b.label)).join(" · ")}</div></div>` : ""}${slot}</div>`;
+  const merged = []; // "Sat 31 Oct, 10am–12pm" when two windows touch
+  live.filter(w => typeof w !== "string").sort((a,b) => (a.date+a.start).localeCompare(b.date+b.start)).forEach(w => { const m = merged[merged.length-1]; if(m && m.date === w.date && m.end === w.start) m.end = w.end; else merged.push(Object.assign({}, w)); });
+  const brief = merged.map(w => `${new Date(w.date + "T00:00").toLocaleDateString("en-SG",{weekday:"short",day:"numeric",month:"short"})} ${fmtT(w.start)}–${fmtT(w.end)}`).concat(live.filter(w => typeof w === "string")).join(" · ");
+  return `<details class="box avail" ${availOpen ? "open" : ""} id="availD"><summary><b>Free:</b> ${esc(brief) || "—"}${outside.length ? ` <span class="meta">+${outside.length} other viewing${outside.length>1?"s":""}</span>` : ""}</summary><p class="meta" style="margin:8px 0 4px">Each viewing is planned as 1 hour, including travel.</p>${live.map(w => { const ins = inWin(w, bk), full = winFull(w, ins);
+    return `<div class="win ${full?"full":""}"><b>${esc(winLabel(w))}</b>${full?` <span class="pill">Fully booked</span>`:""}${ins.length?`<div class="meta">Booked: ${ins.map(b => esc(fmtT(b.at.slice(11,16)) + " " + b.label)).join(" · ")}</div>`:""}</div>`; }).join("")}${outside.length ? `<div class="win"><b>Other confirmed viewings</b><div class="meta">${outside.map(b => esc(fmtWhen(b.at) + " " + b.label)).join(" · ")}</div></div>` : ""}${slot}</details>`;
 }
 const token = (location.hash || "").replace(/^#/, "");
 const PREVIEW = /[?&]preview=1/.test(location.search); // opened from our app: show a way back, don't mark Andrew's visit
@@ -168,10 +172,11 @@ const commit = (fields, mask, transforms, keepalive) => call(`${BASE}:commit?key
 
 const SECTIONS = [["new","Needs a viewing time","New homes, or ones still to be scheduled"],["upcoming","Upcoming viewings",""],["offer","Offers","Our offers and the seller's response"],["viewed","Viewed","Share anything new after the viewing"],["closed","Closed","No need to follow up"]];
 const STATES = [["confirmed","✅ Confirmed"],["pending","⏳ Checking"],["sold","🏷️ Sold"]];
-let viewOpen = new Set();
+let viewOpen = new Set(), availOpen = false;
 let B = null, state = {}, lastSeen = 0, dirty = false, suggestDraft = {url:"", note:""}, slotOpen = false;
 function wireSlots(){
-  const b = $("slotBtn"); if(b) b.onclick = () => { slotOpen = true; const a = $("avail"); a.innerHTML = availHTML(); wireSlots(); const n = $("slotNote"); if(n) n.focus(); };
+  const d = $("availD"); if(d) d.ontoggle = () => { availOpen = d.open; };
+  const b = $("slotBtn"); if(b) b.onclick = () => { slotOpen = true; availOpen = true; const a = $("avail"); a.innerHTML = availHTML(); wireSlots(); const n = $("slotNote"); if(n) n.focus(); };
   const s = $("slotSend"); if(s) s.onclick = async () => {
     s.disabled = true; s.textContent = "Sending…";
     const note = ($("slotNote").value || "").trim().slice(0,160);
@@ -218,17 +223,17 @@ function threadHTML(id, it){
 }
 function replyBox(id, it){
   const st = state[id];
-  if(!threadOf(id, it).length && !viewOpen.has(id)) return `<button class="addview" type="button" data-openview="${esc(id)}">💬 Add a comment for them</button>`;
+  if(!threadOf(id, it).length && !viewOpen.has(id)) return "";
   return `<div class="reply"><textarea data-draft="${esc(id)}" maxlength="800" rows="2" placeholder="Reply to ${esc(B.from || "Adrian")} &amp; Shernice…">${esc(st.draft)}</textarea><button class="rsend" type="button" data-rsend="${esc(id)}">Send</button></div>`;
 }
 function dropHTML(id, it){
-  const st = state[id], ui = dropUI[id];
+  const st = state[id], ui = dropUI[id], cmt = !threadOf(id, it).length && !viewOpen.has(id) ? `<button class="linkbtn" type="button" data-openview="${esc(id)}">💬 Comment</button>` : "";
   if(st.drop && it.dropAnswer !== "keep") return `<div class="dropst">🗑️ You suggested dropping this one (${esc(st.drop.reason)}) — waiting for them to decide. <button class="linkbtn" type="button" data-undrop="${esc(id)}">Undo</button></div>`;
   const kept = st.drop && it.dropAnswer === "keep" ? `<div class="dropst keep">👍 They'd like to keep this one.</div>` : "";
   if(ui) return kept + `<div class="dropui"><b>Why drop it?</b><div class="rs">${DROP_REASONS.map(r => `<button class="opt" type="button" data-dreason="${esc(id)}" data-r="${esc(r)}" aria-pressed="${ui.reason === r}">${esc(r)}</button>`).join("")}</div>
     <input data-dnote="${esc(id)}" maxlength="160" placeholder="Details (optional), e.g. it's really 2BR + study" value="${esc(ui.note)}">
     <div class="rs"><button class="send" type="button" data-dgo="${esc(id)}" ${ui.reason ? "" : "disabled"}>Drop it</button><button class="opt" type="button" data-dcancel="${esc(id)}">Cancel</button></div></div>`;
-  return kept + `<button class="dropbtn" type="button" data-drop="${esc(id)}">🗑️ Drop this home</button>`;
+  return kept + `<div class="cardfoot">${cmt}<button class="linkbtn muted" type="button" data-drop="${esc(id)}">🗑️ Drop</button></div>`;
 }
 function card(id, it){
   const st = state[id], ch = isChanged(it), live = it.status !== "closed";
@@ -238,7 +243,8 @@ function card(id, it){
     ${it.spec ? `<div class="spec">${esc(it.spec)}</div>` : ""}
     ${ch && it.changeNote ? `<div class="chg">🔔 ${esc(it.changeNote)}</div>` : ""}
     ${it.status === "offer" || it.ourOffer ? offerBlock(id, it) : ""}
-    ${live && it.status !== "offer" ? `<div class="opts">${STATES.map(([k,l]) => `<button class="opt" type="button" data-h="${esc(id)}" data-st="${k}" aria-pressed="${st.state===k}">${l}</button>`).join("")}</div>
+    ${it.status === "viewed" ? `<div class="meta" style="margin-top:8px">Viewed ${it.appt ? esc(fmtWhen(it.appt)) : ""}${st.state === "sold" ? ` · <b>marked sold</b> <button class="linkbtn" type="button" data-st="${esc(id)}" data-stv="pending">undo</button>` : ` · <button class="linkbtn" type="button" data-st="${esc(id)}" data-stv="sold">🏷️ Mark as sold</button>`}</div>` : ""}
+    ${live && it.status !== "offer" && it.status !== "viewed" ? `<div class="opts">${STATES.map(([k,l]) => `<button class="opt" type="button" data-h="${esc(id)}" data-st="${k}" aria-pressed="${st.state===k}">${l}</button>`).join("")}</div>
       <div ${st.state==="confirmed"?"":"hidden"}><label>Viewing date &amp; time<div class="dt ${st.appt?"":"empty"}"><span>${st.appt?esc(fmtWhen(st.appt)):"Tap to set date &amp; time"}</span><input type="datetime-local" data-appt="${esc(id)}" value="${esc(st.appt)}"></div></label><div class="warn" data-warn="${esc(id)}" ${st.state==="confirmed"&&clash(id, st.appt)?"":"hidden"}>⚠️ ${esc(clash(id, st.appt))}</div></div>` : ""}
     ${live && it.ask ? `<div class="ask"><b>Please check for us:</b> ${esc(it.ask)}</div>` : ""}
     ${threadHTML(id, it)}
@@ -258,7 +264,7 @@ function render(){
   const items = Object.entries(B.items || {});
   const changed = items.filter(([, it]) => isChanged(it) || newFrom(it).length);
   const from = B.from || "Adrian";
-  let h = `<h1>Hi ${esc(B.agentName || "")} 👋</h1><p class="sub">${esc(from)} &amp; Shernice's viewing board. Update times, offers and your views here any time — everything saves by itself and goes straight to them. Bookmark this page.</p>`;
+  let h = `<h1>Hi ${esc(B.agentName || "")} 👋</h1><p class="sub">${esc(from)} &amp; Shernice's viewing board — everything you change saves by itself.</p>`;
   if(lastSeen && changed.length) h += `<div class="news"><b>Since your last visit</b><ul>${changed.map(([id, it]) => `<li><a href="#h-${esc(id)}" data-jump="${esc(id)}">${esc(it.name)}</a>: ${esc([isChanged(it) ? it.changeNote || "updated" : "", ...newFrom(it).map(m => `${m.name || "They"}: “${m.text.slice(0,90)}${m.text.length > 90 ? "…" : ""}”`)].filter(Boolean).join(" · "))}</li>`).join("")}</ul></div>`;
   const tom = items.filter(([, it]) => it.priority === "top" && it.status !== "closed").sort((a,b) => (a[1].rank||99) - (b[1].rank||99));
   if(tom.length) h += `<div class="box"><h4>What's top of mind for us now</h4><p class="meta" style="margin:0 0 4px">This changes as we view homes and find new ones.</p><ol class="tom" style="margin:4px 0 0;padding-left:20px">${tom.map(([id, it]) => `<li><a href="#h-${esc(id)}" data-jump="${esc(id)}"><b>${esc(it.name)}</b></a>${it.status==="upcoming"&&it.appt?` · ${esc(fmtWhen(it.appt))}`:it.status==="new"?" · needs a viewing time":""}</li>`).join("")}</ol></div>`;
@@ -277,7 +283,7 @@ function render(){
     ${(B.suggestions||[]).filter(x => x.url).length ? `<div class="meta" style="margin-top:8px">Already suggested: ${B.suggestions.filter(x => x.url).map(s => esc((s.url||"").replace(/^https?:\/\/(www\.)?/,"").slice(0,40))).join(", ")}</div>` : ""}</div>
     <h2 class="sec">Note for them <small>optional</small></h2><div class="box"><textarea id="note" maxlength="800" placeholder="Anything else">${esc(B.agentNote||"")}</textarea></div>`;
   root.innerHTML = h;
-  root.querySelectorAll("[data-st]").forEach(b => b.onclick = () => { const id = b.dataset.h, s = state[id]; s.state = b.dataset.st; touch(); const y = scrollY; render(); scrollTo(0, y);
+  root.querySelectorAll("[data-st]").forEach(b => b.onclick = () => { const id = b.dataset.h || b.dataset.st, s = state[id]; s.state = b.dataset.stv || b.dataset.st; touch(); const y = scrollY; render(); scrollTo(0, y);
     if(s.state === "confirmed" && !s.appt){ const i = root.querySelector(`[data-appt="${CSS.escape(id)}"]`); if(i){ try { i.showPicker(); } catch(e){ i.focus(); } } } });
   root.querySelectorAll("[data-appt]").forEach(i => i.onchange = () => { state[i.dataset.appt].appt = i.value; touch(300); const box = i.parentElement; box.classList.toggle("empty", !i.value); box.querySelector("span").textContent = i.value ? fmtWhen(i.value) : "Tap to set date & time"; refreshWarnings(); });
   const typing = (el, fn) => { el.oninput = () => { fn(el.value); touch(4000); }; el.onblur = () => { if(dirty) touch(200); }; };

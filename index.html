@@ -160,6 +160,10 @@ h2.sec small{font:500 13px var(--f-body);color:var(--muted)}
 .aask{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;font-size:13.5px;background:var(--kaya-soft);border-radius:10px;padding:8px 10px;margin-bottom:8px}
 .aask .grow{flex:1;min-width:0}
 .adrop{background:var(--kaya-soft);border-radius:10px;padding:8px 10px;margin-bottom:8px}
+.fold summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}.fold summary::-webkit-details-marker{display:none}
+.fold summary h4{margin:0;flex:0 0 auto}.fold summary .sum{flex:1;min-width:0;display:flex;gap:6px;flex-wrap:wrap;font-size:12px;overflow:hidden}
+.fold summary .sum .trip{padding:2px 8px;font-size:12px;white-space:nowrap}.fold summary .sum.muted{color:var(--muted);white-space:nowrap;text-overflow:ellipsis;display:block}
+.fold summary::after{content:"▸";color:var(--muted);font-size:13px}.fold[open] summary::after{content:"▾"}.fold[open] summary{margin-bottom:8px}
 .sharechip{display:block;margin:0 12px 6px;padding:6px 10px;border-radius:999px;border:1px dashed var(--line);background:none;color:var(--muted);font:inherit;font-size:12.5px;font-weight:600;cursor:pointer}
 .sharechip.on{border-style:solid;border-color:var(--pandan);color:var(--pandan);background:var(--pandan-soft)}
 .msg .shared{color:var(--pandan);font-weight:600}
@@ -449,7 +453,7 @@ async function save(id, data, okMsg){
 }
 
 /* ---------- App version: tell them when a newer one is published ---------- */
-const APP_VERSION = "2026-10-20T00:20+08:00"; // bump on every publish
+const APP_VERSION = "2026-10-20T01:05+08:00"; // bump on every publish
 let swReg = null, lastUpdCheck = 0, newVersion = false;
 async function checkForUpdate(force){
   if(newVersion || (!force && Date.now() - lastUpdCheck < 60000)) return;
@@ -912,7 +916,7 @@ function openUnit(id, toChat){
    suggestion — kept apart from "Our chat", which stays between the two of us. */
 function andrewBox(r){
   if(!agent || !agent.boardToken) return "";
-  if(!onBoard(r.id)) return `<div class="box"><h4>With ${esc(AGENT())}</h4><p style="font-size:13px;color:var(--muted);margin:0 0 8px">Not on his board yet.</p><button class="btn sm" type="button" data-toboard="${esc(r.id)}">＋ Add to ${esc(AGENT())}'s board</button></div>`;
+  if(!onBoard(r.id)) return r.status === "Rejected" || gone(r) ? "" : `<div style="margin:0 0 10px"><button class="btn sm" type="button" data-toboard="${esc(r.id)}">＋ Add to ${esc(AGENT())}'s board</button></div>`;
   const ed = sheet && sheet.askEdit, ask = askOf(r);
   const drop = r.agentDrop && !r.agentDrop.decided && r.status !== "Rejected" ? `<div class="adrop"><b>🗑️ ${esc(AGENT())} suggests dropping this one</b><div style="font-size:13px;margin-top:4px">${esc(r.agentDrop.reason || "")}${r.agentDrop.note ? " — " + esc(r.agentDrop.note) : ""}</div><div class="chips" style="margin-top:8px"><button class="btn sm primary" type="button" data-dropyes="${esc(r.id)}">Drop it</button><button class="btn sm" type="button" data-dropkeep="${esc(r.id)}">Keep it</button></div></div>` : "";
   return `<div class="box withA" id="withA"><h4>With ${esc(AGENT())} <span class="muted" style="font-weight:600;text-transform:none;letter-spacing:0">· he sees all of this</span></h4>
@@ -967,6 +971,7 @@ function renderSheet(fresh){
       ${r.fairBasis?`<div style="font-size:12.5px;color:var(--muted);margin-top:4px">Fair value basis: ${esc(r.fairBasis)}</div>`:""}
       <div style="margin-top:10px">${bar(r)}</div>
       <div class="hearts" style="margin-top:12px">${KEYS.map(k => heartsRow(r,k)).join("")}${claudeRow(r)}</div></div>
+    ${andrewBox(r)}
     <div class="box"><h4>Viewing</h4>
       <div class="form"><label class="w">Status<select id="stSel">${STATUSES.map(s => `<option value="${s}" ${s===st?"selected":""}>${esc(STATUS_LABEL[s])}</option>`).join("")}</select></label>
       <label class="w">Date & time<input id="apptIn" type="datetime-local" value="${esc(r.appt||"")}" ${st==="Booked"?"":"disabled"} title="${st==="Booked"?"":"Set status to Viewing booked to pick a time"}"></label>
@@ -977,15 +982,15 @@ function renderSheet(fresh){
       ${autoConcerns(r).map(t => `<span class="chip concern">${esc(t)}</span>`).join("")}
       ${(r.concerns||[]).map((t,i) => `<span class="chip concern">${esc(t)}<button class="x" type="button" data-untag="concerns" data-i="${i}" aria-label="Remove">×</button></span>`).join("")}</div>
       <form class="addtag" id="tagForm"><input id="tagIn" placeholder="Add a love or concern" maxlength="40" autocomplete="off"><button class="btn sm" type="submit" data-kind="loves">💚 Love</button><button class="btn sm" type="button" id="addConcern">🚩 Concern</button></form></div>
-    ${places.length && r.transit ? `<div class="box"><h4>Getting to school</h4>${places.map(p => { const t = tripOf(r,p.key); if(!t) return ""; return `<div class="route"><div class="hd2"><span class="trip ${esc(t.rating)}"><i></i>${esc(RATE_LABEL[t.rating]||t.rating)}</span>${esc(p.emoji||"")} ${esc(p.short||p.label)}<span class="grow"></span><span>≈${esc(t.min)} min</span></div>
+    ${places.length && r.transit ? `<details class="box fold" ${sheet.schoolOpen ? "open" : ""} data-fold="schoolOpen"><summary><h4>Getting to school</h4><span class="sum">${places.map(p => { const t = tripOf(r,p.key); return t ? `<span class="trip ${esc(t.rating)}"><i></i>${esc(p.short||p.label)} ≈${esc(t.min)}m</span>` : ""; }).filter(Boolean).join("")}</span></summary>${places.map(p => { const t = tripOf(r,p.key); if(!t) return ""; return `<div class="route"><div class="hd2"><span class="trip ${esc(t.rating)}"><i></i>${esc(RATE_LABEL[t.rating]||t.rating)}</span><b>${esc(p.emoji||"")} ${esc(p.short||p.label)}</b><span class="grow"></span><b>≈${esc(t.min)} min</b></div>
         ${p.who?`<div class="meta">${esc(p.who)}</div>`:""}<div class="rt">${esc(t.route)}</div>
         <div class="meta">${t.xfers?esc(t.xfers)+" change"+(t.xfers>1?"s":""):"No changes"} · longest walk ≈${esc(t.walk)} min${typeof r.lat==="number"?` · <a href="${dirUrl(r,p)}" target="_blank" rel="noopener">Directions ↗</a>`:""}</div></div>`; }).join("")}
-        <div class="meta" style="font-size:11.5px;color:var(--muted);margin-top:8px">Estimates for a weekday morning at a child's walking pace, using bus routes and the MRT (North East Line preferred, no LRT). Tap Directions for live times.</div></div>` : ""}
-    <div class="box"><h4>Facts</h4><dl class="kv">
+        <div class="meta" style="font-size:11.5px;color:var(--muted);margin-top:8px">Estimates for a weekday morning at a child's walking pace, using bus routes and the MRT (North East Line preferred, no LRT). Tap Directions for live times.</div></details>` : ""}
+    <details class="box fold" ${sheet.factsOpen ? "open" : ""} data-fold="factsOpen"><summary><h4>Facts</h4><span class="sum muted">${esc([r.format, r.lease].filter(Boolean).join(" · ").slice(0,70))}</span></summary><dl class="kv">
       <dt>Format</dt><dd>${esc(r.format||"—")}</dd><dt>Beds</dt><dd>${esc(r.beds||"—")}</dd><dt>Size</dt><dd>${r.sizeSqft?Number(r.sizeSqft).toLocaleString("en-SG")+" sqft":"—"}</dd>
       <dt>From Kovan</dt><dd>${typeof r.distKm==="number"?(r.distEst?"≈":"")+r.distKm+" km":"—"}</dd><dt>MRT</dt><dd>${esc(r.mrt||"—")}${r.mrtDist?" · "+esc(r.mrtDist):""}</dd>
-      <dt>Lease</dt><dd>${esc(r.lease||"—")}</dd><dt>Area</dt><dd>${esc(r.area||"—")}</dd>${r.checkedAt?`<dt>Checked</dt><dd>${esc(r.checkedAt)}</dd>`:""}</dl>
-      <div class="chips" style="margin-top:10px">${r.url?`<a class="btn sm" href="${esc(r.url)}" target="_blank" rel="noopener">Open listing ↗</a>`:""}${hasPlan(r)?`<button class="btn sm" type="button" data-plan="${esc(r.id)}">📐 Floor plan</button>`:`<button class="btn sm" type="button" data-planadd="${esc(r.id)}">📐 Add floor plan</button>`}<a class="btn sm" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((r.name||"")+" Singapore")}" target="_blank" rel="noopener">Map ↗</a><button class="btn sm" type="button" data-dup="${esc(r.id)}">⧉ Same as…</button></div>
+      <dt>Lease</dt><dd>${esc(r.lease||"—")}</dd><dt>Area</dt><dd>${esc(r.area||"—")}</dd>${r.checkedAt?`<dt>Checked</dt><dd>${esc(r.checkedAt)}</dd>`:""}</dl></details>
+    <div class="box" style="padding-top:8px"><div class="chips">${r.url?`<a class="btn sm" href="${esc(r.url)}" target="_blank" rel="noopener">Open listing ↗</a>`:""}${hasPlan(r)?`<button class="btn sm" type="button" data-plan="${esc(r.id)}">📐 Floor plan</button>`:`<button class="btn sm" type="button" data-planadd="${esc(r.id)}">📐 Add floor plan</button>`}<a class="btn sm" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((r.name||"")+" Singapore")}" target="_blank" rel="noopener">Map ↗</a><button class="btn sm" type="button" data-dup="${esc(r.id)}">⧉ Same as…</button></div>
       ${(r.otherListings||[]).length ? `<div style="margin-top:10px;font-size:13px;color:var(--muted)">Same unit, also listed by: ${(r.otherListings||[]).map((o,i) => `<a href="${esc(o.url)}" target="_blank" rel="noopener">listing ${i+2}${typeof o.askingM==="number"?" ("+esc(money(o.askingM))+")":""} ↗</a>`).join(" · ")}</div>` : ""}</div>
     <div class="box"><h4>Claude's notes</h4>${editing ? `<form class="form" id="editForm">
         <label>Asking (S$M)<input id="e-ask" type="number" step="0.001" value="${r.askingM??""}"></label><label>Size (sqft)<input id="e-size" type="number" value="${r.sizeSqft??""}"></label>
@@ -993,7 +998,6 @@ function renderSheet(fresh){
         <label class="w">Notes<textarea id="e-notes">${esc(r.notes||"")}</textarea></label>
         <div class="w chips"><button class="btn primary sm" type="submit">Save</button><button class="btn sm" type="button" id="cancelEdit">Cancel</button><span class="grow"></span><button class="btn danger sm" type="button" id="delBtn">${sheet.confirmDel?"Tap again to delete":"Delete home"}</button></div></form>`
       : `<div class="notes">${esc(r.notes||"—")}</div><div style="margin-top:8px"><button class="btn sm" type="button" id="editBtn">Edit details</button></div>`}</div>
-    ${andrewBox(r)}
     <div class="box" id="ourChat"><h4>Our chat <span class="muted" style="font-weight:600;text-transform:none;letter-spacing:0">· just the two of us</span></h4><div class="msgs" id="msgs"></div></div>`;
   if(fresh || !$("sheetScroll")){
     root.innerHTML = `<div class="scrim" id="scrim"></div><div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(r.name)}">
@@ -1025,6 +1029,7 @@ function renderSheet(fresh){
   const addTag = kindKey => { const v = $("tagIn").value.trim(); if(!v) return; $("tagIn").value = ""; save(r.id, {[kindKey]: FV.arrayUnion(v)}); };
   $("tagForm").onsubmit = ev => { ev.preventDefault(); addTag("loves"); };
   $("addConcern").onclick = () => addTag("concerns");
+  $("sheetBody").querySelectorAll("[data-fold]").forEach(d => d.ontoggle = () => { sheet[d.dataset.fold] = d.open; });
   if($("askEdit")) $("askEdit").onclick = () => { sheet.askEdit = true; keepScroll(renderSheet); };
   if($("askCancel")) $("askCancel").onclick = () => { sheet.askEdit = false; keepScroll(renderSheet); };
   if($("askSave")) $("askSave").onclick = () => { sheet.askEdit = false; save(r.id, {agentAsk: $("askIn").value.trim()}, "Saved — " + AGENT() + "'s board updates shortly"); };
