@@ -1007,6 +1007,15 @@ function deriveItem(u){
 }
 const SECTION = {new:"Needs a time", upcoming:"Upcoming viewings", viewed:"Viewed", offer:"Offers", closed:"Closed"};
 let syncing = false;
+/* Short unit line for Andrew's board, e.g. "1,819 sqft · 3BR · Penthouse". */
+function specOf(u){
+  if(!u) return "";
+  const cut = (t, n) => { let x = (t || "").replace(/\([^)]*\)/g, "").split(/[,;]| with /)[0].replace(/\s+/g, " ").trim();
+    if(/not stated|unknown|tbc/i.test(x)) return "";
+    if(x.length > n) x = x.slice(0, n + 1).replace(/\s+\S*$/, "").replace(/[\s+&·-]+$/, "");
+    return x; };
+  return [typeof u.sizeSqft === "number" ? u.sizeSqft.toLocaleString("en-SG") + " sqft" : "", cut(u.beds, 32), cut(u.format, 34)].filter(Boolean).join(" · ");
+}
 async function syncBoardFromApp(){
   if(!board || !agent || !agent.boardToken || !unitsLoaded || syncing) return;
   const flat = {}, now = new Date().toISOString(), replies = board.replies || {}, ranking = boardRanking();
@@ -1022,7 +1031,8 @@ async function syncBoardFromApp(){
     if(u){ const pr = priorityOf(u, ranking), ask = askOf(u), rk = ranking.indexOf(id) + 1 || 99;
       if(pr !== (it.priority||"")) flat[`items.${id}.priority`] = pr;
       if(rk !== (it.rank||0)) flat[`items.${id}.rank`] = rk;
-      if(ask !== (it.ask||"")) flat[`items.${id}.ask`] = ask; }
+      if(ask !== (it.ask||"")) flat[`items.${id}.ask`] = ask;
+      const sp = specOf(u); if(sp !== (it.spec||"")) flat[`items.${id}.spec`] = sp; }
     const changed = d.status !== it.status || d.appt !== (it.appt||"") || d.closedReason !== (it.closedReason||"") || stable(off) !== stable(it.ourOffer || null);
     if(!changed) return;
     Object.assign(flat, {[`items.${id}.status`]:d.status, [`items.${id}.appt`]:d.appt, [`items.${id}.closedReason`]:d.closedReason, [`items.${id}.ourOffer`]:off});
@@ -1230,7 +1240,7 @@ async function sendAsk(){
     const now = new Date().toISOString(), flat = {free: sheet.free.filter(w => !winEnded(w))};
     add.forEach(u => {
       const d = deriveItem(u);
-      flat[`items.${u.id}`] = {name:u.name||"", area:(u.area||"").split("·")[0].trim(), url:u.url||"", addedAt:now, status:d.status, appt:d.appt, closedReason:"", ourOffer:null, changedAt:now, changeNote:"New — added by " + NAME[me.key], priority:priorityOf(u), ask:askOf(u)};
+      flat[`items.${u.id}`] = {name:u.name||"", area:(u.area||"").split("·")[0].trim(), url:u.url||"", addedAt:now, status:d.status, appt:d.appt, closedReason:"", ourOffer:null, changedAt:now, changeNote:"New — added by " + NAME[me.key], priority:priorityOf(u), ask:askOf(u), spec:specOf(u)};
     });
     await restPatch("hs_board/" + token, flat);
     if(!add.length){ toast("Availability saved to " + AGENT() + "'s board"); closeSheet(); return; }

@@ -59,6 +59,8 @@ textarea{min-height:70px;resize:vertical}
 .prio{display:inline-block;font-size:11.5px;font-weight:700;border-radius:999px;padding:2px 8px;margin-left:6px;vertical-align:middle;background:var(--rose-soft);color:var(--rose)}
 .ask{margin-top:8px;font-size:13.5px;line-height:1.4;color:var(--ink);background:var(--kaya-soft);border-left:3px solid var(--kaya);border-radius:10px;padding:8px 10px}
 .ask b{color:var(--ink)}
+.spec{font-size:13px;color:var(--ink);font-weight:600;margin-top:2px}
+.addview{margin-top:10px;background:none;border:1px dashed var(--line);color:var(--muted);border-radius:10px;padding:8px 12px;font:inherit;font-size:13.5px;width:100%;text-align:left;cursor:pointer}
 .tom li{margin:4px 0}
 .slotbtn{margin-top:10px;width:100%;padding:10px;border-radius:12px;border:1px dashed currentColor;background:none;font:inherit;font-weight:600;color:inherit;cursor:pointer}
 </style>
@@ -149,6 +151,7 @@ const commit = (fields, mask, transforms) => call(`${BASE}:commit?key=${FB.apiKe
 
 const SECTIONS = [["new","Needs a viewing time","New homes, or ones still to be scheduled"],["upcoming","Upcoming viewings",""],["offer","Offers","Our offers and the seller's response"],["viewed","Viewed","Share anything new after the viewing"],["closed","Closed","No need to follow up"]];
 const STATES = [["confirmed","✅ Confirmed"],["pending","⏳ Checking"],["sold","🏷️ Sold"]];
+let viewOpen = new Set();
 let B = null, state = {}, lastSeen = 0, dirty = false, suggestDraft = {url:"", note:""}, slotOpen = false;
 function wireSlots(){
   const b = $("slotBtn"); if(b) b.onclick = () => { slotOpen = true; const a = $("avail"); a.innerHTML = availHTML(); wireSlots(); const n = $("slotNote"); if(n) n.focus(); };
@@ -186,12 +189,13 @@ function card(id, it){
   return `<div class="box ${ch?"changed":""}" id="h-${esc(id)}">
     <h3>${esc(it.name)}${it.priority === "top" && live ? `<span class="prio">🔥 Top of mind</span>` : ""}</h3>
     <div class="meta">${esc(it.area||"")}${it.url?` · <a href="${esc(it.url)}" target="_blank" rel="noopener">Listing ↗</a>`:""}${it.status==="upcoming"&&it.appt?` · <b>${esc(fmtWhen(it.appt))}</b>`:""}${it.status==="closed"?` · ${esc(it.closedReason||"")}`:""}</div>
+    ${it.spec ? `<div class="spec">${esc(it.spec)}</div>` : ""}
     ${ch && it.changeNote ? `<div class="chg">🔔 ${esc(it.changeNote)}</div>` : ""}
-    ${live && it.ask ? `<div class="ask"><b>Please check for us:</b> ${esc(it.ask)}</div>` : ""}
     ${it.status === "offer" || it.ourOffer ? offerBlock(id, it) : ""}
     ${live && it.status !== "offer" ? `<div class="opts">${STATES.map(([k,l]) => `<button class="opt" type="button" data-h="${esc(id)}" data-st="${k}" aria-pressed="${st.state===k}">${l}</button>`).join("")}</div>
       <div ${st.state==="confirmed"?"":"hidden"}><label>Viewing date &amp; time<div class="dt ${st.appt?"":"empty"}"><span>${st.appt?esc(fmtWhen(st.appt)):"Tap to set date &amp; time"}</span><input type="datetime-local" data-appt="${esc(id)}" value="${esc(st.appt)}"></div></label><div class="warn" data-warn="${esc(id)}" ${st.state==="confirmed"&&clash(id, st.appt)?"":"hidden"}>⚠️ ${esc(clash(id, st.appt))}</div></div>` : ""}
-    ${live ? `<label>Your view on this home (optional)<textarea data-view="${esc(id)}" maxlength="800" placeholder="Condition, seller's flexibility, pros and cons…">${esc(st.view)}</textarea></label>` : (st.view ? `<div class="meta" style="margin-top:8px">Your view: “${esc(st.view)}”</div>` : "")}
+    ${live && it.ask ? `<div class="ask"><b>Please check for us:</b> ${esc(it.ask)}</div>` : ""}
+    ${live ? (st.view || viewOpen.has(id) ? `<label>Your view on this home (optional)<textarea data-view="${esc(id)}" maxlength="800" placeholder="Condition, seller's flexibility, pros and cons…">${esc(st.view)}</textarea></label>` : `<button class="addview" type="button" data-openview="${esc(id)}">✏️ Add your view</button>`) : (st.view ? `<div class="meta" style="margin-top:8px">Your view: “${esc(st.view)}”</div>` : "")}
   </div>`;
 }
 function offerBlock(id, it){
@@ -227,6 +231,7 @@ function render(){
   root.querySelectorAll("[data-st]").forEach(b => b.onclick = () => { state[b.dataset.h].state = b.dataset.st; touch(); const y = scrollY; render(); scrollTo(0, y); });
   root.querySelectorAll("[data-appt]").forEach(i => i.onchange = () => { state[i.dataset.appt].appt = i.value; touch(); const box = i.parentElement; box.classList.toggle("empty", !i.value); box.querySelector("span").textContent = i.value ? fmtWhen(i.value) : "Tap to set date & time"; refreshWarnings(); });
   root.querySelectorAll("[data-view]").forEach(t => t.oninput = () => { state[t.dataset.view].view = t.value; touch(); });
+  root.querySelectorAll("[data-openview]").forEach(b => b.onclick = () => { const id = b.dataset.openview; viewOpen.add(id); const y = scrollY; render(); scrollTo(0, y); const t = root.querySelector(`[data-view="${CSS.escape(id)}"]`); if(t) t.focus({preventScroll:true}); });
   root.querySelectorAll("[data-counter]").forEach(t => t.oninput = () => { const id = t.dataset.counter; const m = parseMoney(t.value); state[id].counter = Object.assign({}, state[id].counter, {amountM: m}); touch(); });
   root.querySelectorAll("[data-cnote]").forEach(t => t.oninput = () => { const id = t.dataset.cnote; state[id].counter = Object.assign({}, state[id].counter, {note: t.value}); touch(); });
   ["sgUrl","sgNote"].forEach(k => { $(k).oninput = () => { suggestDraft[k === "sgUrl" ? "url" : "note"] = $(k).value; touch(); }; });
