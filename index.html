@@ -153,6 +153,10 @@ h2.sec small{font:500 13px var(--f-body);color:var(--muted)}
 .btn{border:1px solid var(--line);background:var(--paper);border-radius:10px;padding:7px 12px;font-weight:600;font-size:13px;text-decoration:none;color:var(--ink);display:inline-flex;align-items:center;gap:6px}
 .btn.primary{background:var(--pandan);border-color:var(--pandan);color:#fff}
 .btn.danger{color:var(--rose);border-color:var(--rose)}
+.sharechip{display:block;margin:0 12px 6px;padding:6px 10px;border-radius:999px;border:1px dashed var(--line);background:none;color:var(--muted);font:inherit;font-size:12.5px;font-weight:600;cursor:pointer}
+.sharechip.on{border-style:solid;border-color:var(--pandan);color:var(--pandan);background:var(--pandan-soft)}
+.msg .shared{color:var(--pandan);font-weight:600}
+.linkbtn{background:none;border:0;padding:4px 0 0;color:var(--pandan);font:inherit;font-size:12px;font-weight:600;cursor:pointer}
 .planv{position:fixed;inset:0;z-index:80;background:#111;color:#eee;display:flex;flex-direction:column}
 .planv .pvbar,.planv .pvfoot{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#1c1c1c}
 .planv .pvbar{padding-top:max(10px,env(safe-area-inset-top))}
@@ -511,7 +515,7 @@ function card(r){
     ${dupBanner(r)}
     <div class="hero">${r.photoUrl ? `<div class="pic ${k}">${pic(k)}</div>` : devTile(r)}<div class="ttl">
       <h3>${esc(r.name)}</h3><div class="sub">${esc(r.area||"")}</div>${r.isNew && !isNewFor(r,me.key) && isNewFor(r,partnerOf(me.key)) && r.status!=="Rejected" ? `<div class="hint">👀 ${esc(NAME[partnerOf(me.key)])} hasn't looked yet</div>` : ""}${updatedFor(r,me.key)&&r.updateNote?`<div class="hint upd">↻ ${esc(r.updateNote)}</div>`:""}
-      <div class="row"><span class="dist">${typeof r.distKm==="number"?(r.distEst?"≈":"")+r.distKm.toFixed(r.distKm<1?2:1)+" km":"—"} from Kovan</span><span class="pill st-${st}">${esc(STATUS_LABEL[st])}</span>${isNewFor(r,me.key)?`<span class="pill new">New</span>`:updatedFor(r,me.key)?`<span class="pill upd" title="${esc(r.updateNote||"")}">Updated</span>`:""}${r.listingState&&r.listingState!=="Live"?`<span class="pill st-Booked">${esc(r.listingState)}</span>`:""}</div>
+      <div class="row"><span class="dist">${typeof r.distKm==="number"?(r.distEst?"≈":"")+r.distKm.toFixed(r.distKm<1?2:1)+" km":"—"} from Kovan</span><span class="pill st-${st}">${esc(STATUS_LABEL[st])}</span>${isNewFor(r,me.key)?`<span class="pill new">New</span>`:updatedFor(r,me.key)?`<span class="pill upd" title="${esc(r.updateNote||"")}">Updated</span>`:""}${r.listingState&&r.listingState!=="Live"?`<span class="pill st-Booked">${esc(r.listingState)}</span>`:""}${r.agentDrop&&!r.agentDrop.decided&&r.status!=="Rejected"?`<span class="pill st-Booked">${esc(AGENT())}: drop?</span>`:""}</div>
     </div></div>
     <div class="body">
       <div class="money"><span class="ask ${r.askingM>budgetOf(r)?"over":""}">${esc(money(r.askingM))}</span><span class="fair">fair ${esc(fairTxt(r))}</span></div>
@@ -872,10 +876,35 @@ function openUnit(id, toChat){
   unsubComments = unitRef(id).collection("comments").orderBy("at").onSnapshot(s => { comments = s.docs.map(d => Object.assign({id:d.id}, d.data())); renderMsgs(); }, ()=>{});
   renderSheet(true);
 }
+/* Comments Andrew can see: on homes that are on his board, a comment can be shared.
+   It's on by default when replying to him (his comment is the latest), off otherwise. */
+const autoShare = () => { const last = comments[comments.length - 1]; return !!(last && last.by === "agent"); };
+const shareOn = r => !!(r && onBoard(r.id) && (sheet && typeof sheet.share === "boolean" ? sheet.share : autoShare()));
+function renderShareChip(){
+  const el = $("shareSlot"); if(!el || !sheet || sheet.type !== "unit") return;
+  const r = units.find(u => u.id === sheet.id);
+  if(!r || !onBoard(r.id)){ el.innerHTML = ""; return; }
+  const on = shareOn(r);
+  el.innerHTML = `<button class="sharechip ${on ? "on" : ""}" type="button" id="shareTg">${on ? `👁 ${esc(AGENT())} sees this comment` : `🔒 Just us · tap so ${esc(AGENT())} sees it`}</button>`;
+  $("shareTg").onclick = () => { sheet.share = !on; renderShareChip(); };
+}
+async function shareToBoard(id, entry){
+  if(!agent || !agent.boardToken) throw new Error("no board");
+  const name = `${FS_DOCS()}/hs_board/${agent.boardToken}`;
+  await restCall("POST", `${FS_DOCS()}:commit`, {writes:[{update:{name, fields:{}}, updateMask:{fieldPaths:[]},
+    updateTransforms:[{fieldPath:fp(`items.${id}.thread`), appendMissingElements:{values:[fsEnc(entry)]}}], currentDocument:{exists:true}}]});
+}
+async function shareOld(cid){
+  const c = comments.find(x => x.id === cid), id = sheet && sheet.id; if(!c || !id) return;
+  try { await shareToBoard(id, {by:c.by, name:NAME[c.by] || c.by, text:c.text, at:c.at}); await unitRef(id).collection("comments").doc(cid).update({shared:true}); toast(AGENT() + " can see it now"); }
+  catch(e){ toast("Couldn't reach " + AGENT() + "'s board — try again"); }
+}
 function closeSheet(){ sheet = null; if(unsubComments){ unsubComments(); unsubComments = null; } $("sheetRoot").innerHTML = ""; }
 function renderMsgs(){
   const el = $("msgs"); if(!el) return;
-  el.innerHTML = comments.length ? comments.map(c => `<div class="msg ${esc(c.by)} ${c.by===me.key?"mine":""}"><div class="by">${esc(NAME[c.by]||c.by)} · ${esc(ago(c.at))}</div>${esc(c.text)}</div>`).join("") : `<div style="color:var(--muted);font-size:13px">No comments yet. Say what you liked or what worries you.</div>`;
+  const sid = sheet && sheet.id, ob = sid && onBoard(sid);
+  el.innerHTML = comments.length ? comments.map(c => `<div class="msg ${esc(c.by)} ${c.by===me.key?"mine":""}"><div class="by">${esc(NAME[c.by]||c.by)} · ${esc(ago(c.at))}${c.shared ? ` · <span class="shared">👁 ${esc(AGENT())} sees this</span>` : ""}</div>${esc(c.text)}${ob && !c.shared && KEYS.includes(c.by) ? `<div><button class="linkbtn" type="button" data-sharec="${esc(c.id)}">👁 Show ${esc(AGENT())}</button></div>` : ""}</div>`).join("") : `<div style="color:var(--muted);font-size:13px">No comments yet. Say what you liked or what worries you.</div>`;
+  renderShareChip();
   const sc = $("sheetScroll"); if(sc && renderMsgs._stick) sc.scrollTop = sc.scrollHeight;
   if(sheet && sheet.toChat && comments.length){ sheet.toChat = false; const box = el.closest(".box"); if(box && sc) sc.scrollTop = box.offsetTop - 8; }
 }
@@ -894,6 +923,7 @@ function renderSheet(fresh){
   const inner = `
     ${photoBanner(r, true)}
     ${dupBanner(r, true)}
+    ${r.agentDrop && !r.agentDrop.decided && r.status !== "Rejected" ? `<div class="box" style="background:var(--kaya-soft)"><b>🗑️ ${esc(AGENT())} suggests dropping this one</b><div style="font-size:13px;margin-top:4px">${esc(r.agentDrop.reason || "")}${r.agentDrop.note ? " — " + esc(r.agentDrop.note) : ""}</div><div class="chips" style="margin-top:8px"><button class="btn sm primary" type="button" data-dropyes="${esc(r.id)}">Drop it</button><button class="btn sm" type="button" data-dropkeep="${esc(r.id)}">Keep it</button></div></div>` : ""}
     ${gone(r) ? `<div class="box" style="background:var(--rose-soft)"><b>🏷️ ${esc(r.listingState)}</b>${r.updateNote?`<div style="font-size:13px;margin-top:4px">${esc(r.updateNote)}</div>`:""}<div style="font-size:12.5px;color:var(--muted);margin-top:4px">Out of Top 5 and the homes in play. Your hearts and comments are kept.</div><div class="chips" style="margin-top:8px"><button class="btn sm" type="button" data-relist="${esc(r.id)}">It's still available</button></div></div>` : ""}
     ${sheet.wasUpdated ? `<div class="box" style="background:var(--sky-soft)"><b style="color:var(--sky)">↻ Updated since you last looked:</b> ${esc(sheet.wasUpdated)}</div>` : ""}
     <div class="box"><div class="money"><span class="ask ${r.askingM>budgetOf(r)?"over":""}">${esc(money(r.askingM))}</span><span class="fair">fair ${esc(fairTxt(r))}</span></div>
@@ -935,11 +965,11 @@ function renderSheet(fresh){
     root.innerHTML = `<div class="scrim" id="scrim"></div><div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(r.name)}">
       <div class="hd"><div class="pic ${kind(r)}" style="flex:0 0 40px;height:48px"><span style="transform:scale(.7)">${pic(kind(r))}</span></div><h3 id="sheetTitle">${esc(r.name)}</h3><button class="close" id="closeSheet" type="button" aria-label="Close">×</button></div>
       <div class="sc" id="sheetScroll"><div id="sheetBody"></div></div>
-      <form class="composer" id="composer"><input id="cIn" placeholder="Comment as ${esc(me.name)}…" maxlength="500" autocomplete="off"><button class="btn primary" type="submit">Send</button></form></div>`;
+      <div id="shareSlot"></div><form class="composer" id="composer"><input id="cIn" placeholder="Comment as ${esc(me.name)}…" maxlength="500" autocomplete="off"><button class="btn primary" type="submit">Send</button></form></div>`;
     $("scrim").onclick = closeSheet; $("closeSheet").onclick = closeSheet;
     $("composer").onsubmit = async ev => { ev.preventDefault(); const t = $("cIn").value.trim(); if(!t) return; $("cIn").value = ""; renderMsgs._stick = true;
       const at = new Date().toISOString();
-      try { logAct(null, {kind:"comment", by:me.key, unitId:r.id, unitName:r.name||"", text:t.slice(0,300), actAt:at}); await unitRef(r.id).collection("comments").add({by:me.key, text:t, at}); await unitRef(r.id).update({commentCount: FV.increment(1), lastComment:{by:me.key, text:t.slice(0,140), at}}); }
+      try { logAct(null, {kind:"comment", by:me.key, unitId:r.id, unitName:r.name||"", text:t.slice(0,300), actAt:at}); const share = shareOn(r); await unitRef(r.id).collection("comments").add(Object.assign({by:me.key, text:t, at}, share ? {shared:true} : {})); if(share){ sheet.share = null; shareToBoard(r.id, {by:me.key, name:NAME[me.key], text:t, at}).catch(() => toast("Saved, but couldn't reach " + AGENT() + "'s board — try again later")); } await unitRef(r.id).update({commentCount: FV.increment(1), lastComment:{by:me.key, text:t.slice(0,140), at}}); }
       catch(e){ toast("Couldn't send — check your connection"); } };
   }
   $("sheetTitle").textContent = r.name;
@@ -948,7 +978,13 @@ function renderSheet(fresh){
   sc.scrollTop = keep;
   renderMsgs();
   // wire
-  $("stSel").onchange = e => save(r.id, {status:e.target.value, ...(["Unviewed","Rejected"].includes(e.target.value) ? {appt:""} : {})}, "Status updated");
+  $("stSel").onchange = e => { const v = e.target.value, extra = {};
+    if(v === "Rejected" && onBoard(r.id)){ const mine = comments.filter(c => KEYS.includes(c.by)).pop();
+      const why = prompt(`Reason to show on ${AGENT()}'s board (optional):`, (mine && mine.text || "").slice(0,120));
+      if(why === null){ e.target.value = r.status || "Unviewed"; return; }
+      extra.rejectReason = why.trim().slice(0,160); }
+    else if(v !== "Rejected" && r.rejectReason) extra.rejectReason = FV.delete();
+    save(r.id, {status:v, ...(["Unviewed","Rejected"].includes(v) ? {appt:""} : {}), ...extra}, "Status updated"); };
   $("apptIn").onchange = e => save(r.id, {appt:e.target.value}, "Viewing saved");
   wireOffer(r);
   $("agentIn").onchange = e => save(r.id, {agent:e.target.value.trim()}, "Saved");
@@ -1088,7 +1124,7 @@ function boardWants(){
 }
 function deriveItem(u){
   if(!u) return {status:"closed", closedReason:"Removed from our list", appt:""};
-  if(u.nopeRejected || u.status === "Rejected") return {status:"closed", closedReason:"No longer interested", appt:""};
+  if(u.nopeRejected || u.status === "Rejected") return {status:"closed", closedReason: u.rejectReason ? "Not for us — " + u.rejectReason : "No longer interested", appt:""};
   if(/sold|withdrawn/i.test(u.listingState || "")) return {status:"closed", closedReason:"Sold / withdrawn", appt:""};
   if(u.status === "Offer") return {status:"offer", closedReason:"", appt:u.appt||""};
   if(u.status === "Viewed") return {status:"viewed", closedReason:"", appt:u.appt||""};
@@ -1122,7 +1158,8 @@ async function syncBoardFromApp(){
       if(pr !== (it.priority||"")) flat[`items.${id}.priority`] = pr;
       if(rk !== (it.rank||0)) flat[`items.${id}.rank`] = rk;
       if(ask !== (it.ask||"")) flat[`items.${id}.ask`] = ask;
-      const sp = specOf(u); if(sp !== (it.spec||"")) flat[`items.${id}.spec`] = sp; }
+      const sp = specOf(u); if(sp !== (it.spec||"")) flat[`items.${id}.spec`] = sp;
+      const da = (u.agentDrop && u.agentDrop.decided) || ""; if(da !== (it.dropAnswer||"")) flat[`items.${id}.dropAnswer`] = da; }
     const changed = d.status !== it.status || d.appt !== (it.appt||"") || d.closedReason !== (it.closedReason||"") || stable(off) !== stable(it.ourOffer || null);
     if(!changed) return;
     Object.assign(flat, {[`items.${id}.status`]:d.status, [`items.${id}.appt`]:d.appt, [`items.${id}.closedReason`]:d.closedReason, [`items.${id}.ourOffer`]:off});
@@ -1182,7 +1219,7 @@ async function applyBoardReplies(){
     const R = d.replies || {}, P = d.appliedReplies || {}, sugg = d.suggestions || [], done = d.appliedSuggestions || 0;
     if(stable(R) === stable(P) && sugg.length <= done) return;
     const ids = Object.keys(R).filter(id => units.some(z => z.id === id) && stable(R[id]) !== stable(P[id] || {}));
-    const now = new Date().toISOString(), writes = [];
+    const now = new Date().toISOString(), writes = [], boardTf = [];
     for(const id of ids){
       const ud = await restCall("GET", `${FS_DOCS()}/hs_units/${id}`); if(!ud) continue;
       const u = fsDec({mapValue:{fields:ud.fields || {}}}), x = R[id] || {}, p = P[id] || {}, upd = {}, lines = [], tf = [];
@@ -1193,6 +1230,13 @@ async function applyBoardReplies(){
       }
       if(x.state === "sold" && p.state !== "sold"){ upd.listingState = "Sold (per agent)"; upd.updatedAt = now; upd.updateNote = AGENT() + " says this unit is sold or withdrawn"; lines.push("This unit is sold or withdrawn."); }
       else if(p.state === "sold" && x.state !== "sold" && u.listingState === "Sold (per agent)"){ upd.listingState = "Live"; upd.updatedAt = now; upd.updateNote = AGENT() + " took back 'sold' — still available"; lines.push("Still available (I'd marked it sold by mistake)."); }
+      let nC = 0; // new comments on this home
+      const dr = x.drop, pdr = p.drop;
+      if(dr && dr.at && (!pdr || pdr.at !== dr.at) && dr.reason !== "Sold"){
+        upd.agentDrop = {reason:dr.reason||"", note:dr.note||"", at:dr.at}; upd.updatedAt = now; upd.updateNote = `${AGENT()} suggests dropping it: ${dr.reason||""}`;
+        tf.push({fieldPath:"concerns", appendMissingElements:{values:[fsEnc(`${AGENT()}: ${(dr.reason||"drop").toLowerCase()}`)]}});
+        lines.push(`Suggest we drop this one — ${dr.reason||""}${dr.note ? ": " + dr.note : ""}`);
+      } else if(!dr && pdr && u.agentDrop && !u.agentDrop.decided){ upd.agentDrop = null; lines.push("Never mind — no need to drop this one."); }
       const viewChanged = (x.view||"").trim() && x.view !== p.view;
       // He edits his board as he types (autosave): a view re-edited within 10 minutes updates his last comment instead of adding another.
       const vr = u.agentViewRef, recent = vr && vr.cid && Date.now() - Date.parse(vr.at) < 10*60000;
@@ -1216,8 +1260,20 @@ async function applyBoardReplies(){
         upd.lastComment = {by:"agent", text:text.slice(0,140), at:now};
         upd.agentViewRef = viewChanged && lines.length === 1 ? {cid, act, at:now} : null;
         writes.push({update:{name:`${FS_DOCS()}/hs_meta/${act}`, fields:fsEnc({kind:"comment", by:"agent", unitId:id, unitName:u.name||"", text:text.slice(0,300), actAt:now}).mapValue.fields}, currentDocument:{exists:false}});
-        tf.push({fieldPath:"commentCount", increment:{integerValue:"1"}});
+        nC++;
       }
+      // His replies (board "conversation"): one comment each, also added to the card's thread.
+      const seenM = new Set((p.msgs || []).map(m => m.at + "|" + m.text));
+      const freshM = (x.msgs || []).filter(m => m && (m.text||"").trim() && !seenM.has(m.at + "|" + m.text));
+      freshM.forEach(m => {
+        const text = m.text.trim().slice(0,800), cid = randToken(20);
+        writes.push({update:{name:`${FS_DOCS()}/hs_units/${id}/comments/${cid}`, fields:fsEnc({by:"agent", text, at:m.at || now, shared:true}).mapValue.fields}, currentDocument:{exists:false}});
+        writes.push({update:{name:`${FS_DOCS()}/hs_meta/act_${randToken(20)}`, fields:fsEnc({kind:"comment", by:"agent", unitId:id, unitName:u.name||"", text:text.slice(0,300), actAt:now}).mapValue.fields}, currentDocument:{exists:false}});
+        boardTf.push({fieldPath:fp(`items.${id}.thread`), appendMissingElements:{values:[fsEnc({by:"agent", name:AGENT(), text, at:m.at || now})]}});
+        upd.lastComment = {by:"agent", text:text.slice(0,140), at:now};
+      });
+      nC += freshM.length;
+      if(nC) tf.push({fieldPath:"commentCount", increment:{integerValue:String(nC)}});
       const keys = Object.keys(upd);
       if(keys.length || tf.length) writes.push({update:{name:`${FS_DOCS()}/hs_units/${id}`, fields:fsEnc(upd).mapValue.fields}, updateMask:{fieldPaths:keys.map(fp)}, updateTransforms:tf, currentDocument:{exists:true}});
     }
@@ -1231,7 +1287,7 @@ async function applyBoardReplies(){
       if(sg && sg.url) writes.push({update:{name:`${FS_DOCS()}/hs_requests/${randToken(20)}`, fields:fsEnc({type:"add", url:sg.url, note:sg.note||"", suggestedBy:AGENT(), by:"agent", status:"queued", createdAt:now}).mapValue.fields}, currentDocument:{exists:false}});
     });
     const bf = {appliedReplies:R, appliedSuggestions:sugg.length}; if(slotAsk) bf.slotAsk = slotAsk;
-    writes.push({update:{name:bpath, fields:fsEnc(bf).mapValue.fields}, updateMask:{fieldPaths:Object.keys(bf)}, currentDocument:{updateTime:bdoc.updateTime}});
+    writes.push({update:{name:bpath, fields:fsEnc(bf).mapValue.fields}, updateMask:{fieldPaths:Object.keys(bf)}, updateTransforms:boardTf, currentDocument:{updateTime:bdoc.updateTime}});
     await restCall("POST", `${FS_DOCS()}:commit`, {writes});
   } catch(e){ console.warn("Board reply not applied yet:", e && e.message); }
   finally { applyingBoard = false; }
@@ -1437,6 +1493,10 @@ document.addEventListener("click", ev => {
   if(t.dataset.reply){ openReply(); return; }
   if(t.dataset.dup){ sheet = {type:"dup", id:t.dataset.dup, q:""}; renderSheet(true); return; }
   if(t.dataset.dupyes){ mergeInto(t.dataset.dupyes, t.dataset.into); return; }
+  if(t.dataset.sharec){ shareOld(t.dataset.sharec); return; }
+  if(t.dataset.dropyes){ const u = units.find(x => x.id === t.dataset.dropyes), d = (u && u.agentDrop) || {};
+    save(u.id, {status:"Rejected", appt:"", rejectReason:`${AGENT()}: ${d.reason || "suggested dropping"}${d.note ? " (" + d.note + ")" : ""}`, "agentDrop.decided":"drop"}, "Dropped — moved to Rejected"); return; }
+  if(t.dataset.dropkeep){ save(t.dataset.dropkeep, {"agentDrop.decided":"keep"}, "Kept — " + AGENT() + " will see you'd like to keep it"); return; }
   if(t.dataset.plan){ openPlan(t.dataset.plan); return; }
   if(t.dataset.planadd){ pickPlan(t.dataset.planadd); return; }
   if(t.dataset.relist){ save(t.dataset.relist, {listingState:"Live"}, "Back in play"); return; }

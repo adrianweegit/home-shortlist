@@ -62,6 +62,23 @@ textarea{min-height:70px;resize:vertical}
 .spec{font-size:13px;color:var(--ink);font-weight:600;margin-top:2px}
 .addview{margin-top:10px;background:none;border:1px dashed var(--line);color:var(--muted);border-radius:10px;padding:8px 12px;font:inherit;font-size:13.5px;width:100%;text-align:left;cursor:pointer}
 .tom li{margin:4px 0}
+.prio.newc{background:var(--pandan-soft);color:var(--pandan)}
+.thread{margin-top:10px;display:flex;flex-direction:column;gap:6px}
+.tm{max-width:88%;padding:7px 10px;border-radius:12px;background:var(--bg);border:1px solid var(--line);font-size:13.5px;line-height:1.4;align-self:flex-start;white-space:pre-wrap}
+.tm.me{align-self:flex-end;background:var(--pandan-soft);border-color:transparent}
+.tm.new{border-color:var(--pandan)}
+.tby{font-size:11.5px;color:var(--muted);font-weight:600;margin-bottom:2px}
+.reply{display:flex;gap:6px;margin-top:8px;align-items:flex-end}
+.reply textarea{flex:1;min-height:40px;margin:0}
+.rsend{border:0;border-radius:10px;background:var(--pandan);color:#fff;font:inherit;font-weight:700;padding:10px 14px;cursor:pointer}
+.linkbtn{background:none;border:0;padding:0;color:var(--pandan);font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;text-align:left}
+.dropbtn{margin-top:10px;background:none;border:0;color:var(--muted);font:inherit;font-size:13px;padding:4px 0;cursor:pointer}
+.dropst{margin-top:10px;font-size:13px;background:var(--rose-soft);border-radius:10px;padding:8px 10px}
+.dropst.keep{background:var(--pandan-soft)}
+.dropui{margin-top:10px;border:1px solid var(--line);border-radius:12px;padding:10px}
+.dropui .rs{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.dropui .opt{padding:7px 10px}
+.dropui input{width:100%;box-sizing:border-box}
 .slotbtn{margin-top:10px;width:100%;padding:10px;border-radius:12px;border:1px dashed currentColor;background:none;font:inherit;font-weight:600;color:inherit;cursor:pointer}
 </style>
 </head>
@@ -172,7 +189,7 @@ call(`${BASE}/hs_board/${token}?key=${FB.apiKey}`).then(async r => {
   lastSeen = B.agentSeenAt ? B.agentSeenAt.getTime() : 0;
   const R = B.replies || {};
   Object.keys(B.items || {}).forEach(id => { const p = R[id] || {}, it = B.items[id], up = it.status === "upcoming" && it.appt;
-    state[id] = {state: up ? "confirmed" : (p.state || "pending"), appt: up ? it.appt : (p.appt || ""), view: p.view || "", counter: p.counter || null}; });
+    state[id] = {state: up ? "confirmed" : (p.state || "pending"), appt: up ? it.appt : (p.appt || ""), view: p.view || "", counter: p.counter || null, msgs: (p.msgs || []).slice(), drop: p.drop || null, draft: ""}; });
   render(); $("bar").hidden = false; $("msg").innerHTML = `<span class="meta">${PREVIEW ? "Preview — taps here aren't saved." : "Everything you change saves by itself."}</span>`;
   if(!PREVIEW) commit({}, [], ["agentSeenAt"]).catch(() => {}); // mark this visit (not when we preview it)
 }).catch(e => {
@@ -184,10 +201,39 @@ call(`${BASE}/hs_board/${token}?key=${FB.apiKey}`).then(async r => {
 const isChanged = it => it.changedAt && Date.parse(it.changedAt) > lastSeen;
 const PR = {top:0, interested:1, low:2};
 const prRank = it => (PR[it.priority] ?? 1) * 100 + (it.rank || 99);
+const ago = t => { const m = Math.round((Date.now() - Date.parse(t)) / 60000); if(!(m >= 0)) return ""; if(m < 1) return "just now"; if(m < 60) return m + " min ago"; const h = Math.round(m/60); if(h < 24) return h + "h ago"; const d = Math.round(h/24); return d < 7 ? d + "d ago" : new Date(t).toLocaleDateString("en-SG",{day:"numeric",month:"short"}); };
+const newFrom = it => (it.thread || []).filter(m => m.by !== "agent" && Date.parse(m.at) > lastSeen);
+let threadOpen = new Set(), dropUI = {};
+const DROP_REASONS = ["Sold", "Not as advertised", "Seller not flexible", "Doesn't fit your needs", "Other"];
+function threadOf(id, it){ // shared comments + his replies (saved or still on their way)
+  const st = state[id], th = (it.thread || []).slice(), key = m => m.at + "|" + m.text, have = new Set(th.map(key));
+  (st.msgs || []).forEach(m => { if(!have.has(key(m))) th.push({by:"agent", text:m.text, at:m.at}); });
+  if((st.view||"").trim() && !th.some(m => m.by === "agent" && m.text.trim() === st.view.trim())) th.unshift({by:"agent", text:st.view.trim(), at:""});
+  return th.sort((a,b) => (a.at||"").localeCompare(b.at||""));
+}
+function threadHTML(id, it){
+  const th = threadOf(id, it); if(!th.length) return "";
+  const open = threadOpen.has(id), shown = open ? th : th.slice(-4), more = th.length - shown.length;
+  return `<div class="thread">${more ? `<button class="linkbtn" type="button" data-thopen="${esc(id)}">Show ${more} earlier</button>` : ""}${shown.map(m => `<div class="tm ${m.by === "agent" ? "me" : ""} ${m.by !== "agent" && Date.parse(m.at) > lastSeen ? "new" : ""}"><div class="tby">${m.by === "agent" ? "You" : esc(m.name || "Them")}${m.at ? " · " + esc(ago(m.at)) : ""}</div>${esc(m.text)}</div>`).join("")}</div>`;
+}
+function replyBox(id, it){
+  const st = state[id];
+  if(!threadOf(id, it).length && !viewOpen.has(id)) return `<button class="addview" type="button" data-openview="${esc(id)}">💬 Add a comment for them</button>`;
+  return `<div class="reply"><textarea data-draft="${esc(id)}" maxlength="800" rows="2" placeholder="Reply to ${esc(B.from || "Adrian")} &amp; Shernice…">${esc(st.draft)}</textarea><button class="rsend" type="button" data-rsend="${esc(id)}">Send</button></div>`;
+}
+function dropHTML(id, it){
+  const st = state[id], ui = dropUI[id];
+  if(st.drop && it.dropAnswer !== "keep") return `<div class="dropst">🗑️ You suggested dropping this one (${esc(st.drop.reason)}) — waiting for them to decide. <button class="linkbtn" type="button" data-undrop="${esc(id)}">Undo</button></div>`;
+  const kept = st.drop && it.dropAnswer === "keep" ? `<div class="dropst keep">👍 They'd like to keep this one.</div>` : "";
+  if(ui) return kept + `<div class="dropui"><b>Why drop it?</b><div class="rs">${DROP_REASONS.map(r => `<button class="opt" type="button" data-dreason="${esc(id)}" data-r="${esc(r)}" aria-pressed="${ui.reason === r}">${esc(r)}</button>`).join("")}</div>
+    <input data-dnote="${esc(id)}" maxlength="160" placeholder="Details (optional), e.g. it's really 2BR + study" value="${esc(ui.note)}">
+    <div class="rs"><button class="send" type="button" data-dgo="${esc(id)}" ${ui.reason ? "" : "disabled"}>Drop it</button><button class="opt" type="button" data-dcancel="${esc(id)}">Cancel</button></div></div>`;
+  return kept + `<button class="dropbtn" type="button" data-drop="${esc(id)}">🗑️ Drop this home</button>`;
+}
 function card(id, it){
   const st = state[id], ch = isChanged(it), live = it.status !== "closed";
   return `<div class="box ${ch?"changed":""}" id="h-${esc(id)}">
-    <h3>${esc(it.name)}${it.priority === "top" && live ? `<span class="prio">🔥 Top of mind</span>` : ""}</h3>
+    <h3>${esc(it.name)}${it.priority === "top" && live ? `<span class="prio">🔥 Top of mind</span>` : ""}${newFrom(it).length ? `<span class="prio newc">💬 New from ${esc([...new Set(newFrom(it).map(m => m.name || "them"))].join(" & "))}</span>` : ""}</h3>
     <div class="meta">${esc(it.area||"")}${it.url?` · <a href="${esc(it.url)}" target="_blank" rel="noopener">Listing ↗</a>`:""}${it.status==="upcoming"&&it.appt?` · <b>${esc(fmtWhen(it.appt))}</b>`:""}${it.status==="closed"?` · ${esc(it.closedReason||"")}`:""}</div>
     ${it.spec ? `<div class="spec">${esc(it.spec)}</div>` : ""}
     ${ch && it.changeNote ? `<div class="chg">🔔 ${esc(it.changeNote)}</div>` : ""}
@@ -195,7 +241,9 @@ function card(id, it){
     ${live && it.status !== "offer" ? `<div class="opts">${STATES.map(([k,l]) => `<button class="opt" type="button" data-h="${esc(id)}" data-st="${k}" aria-pressed="${st.state===k}">${l}</button>`).join("")}</div>
       <div ${st.state==="confirmed"?"":"hidden"}><label>Viewing date &amp; time<div class="dt ${st.appt?"":"empty"}"><span>${st.appt?esc(fmtWhen(st.appt)):"Tap to set date &amp; time"}</span><input type="datetime-local" data-appt="${esc(id)}" value="${esc(st.appt)}"></div></label><div class="warn" data-warn="${esc(id)}" ${st.state==="confirmed"&&clash(id, st.appt)?"":"hidden"}>⚠️ ${esc(clash(id, st.appt))}</div></div>` : ""}
     ${live && it.ask ? `<div class="ask"><b>Please check for us:</b> ${esc(it.ask)}</div>` : ""}
-    ${live ? (st.view || viewOpen.has(id) ? `<label>Your view on this home (optional)<textarea data-view="${esc(id)}" maxlength="800" placeholder="Condition, seller's flexibility, pros and cons…">${esc(st.view)}</textarea></label>` : `<button class="addview" type="button" data-openview="${esc(id)}">✏️ Add your view</button>`) : (st.view ? `<div class="meta" style="margin-top:8px">Your view: “${esc(st.view)}”</div>` : "")}
+    ${threadHTML(id, it)}
+    ${live ? replyBox(id, it) : ""}
+    ${live && it.status !== "offer" ? dropHTML(id, it) : ""}
   </div>`;
 }
 function offerBlock(id, it){
@@ -208,10 +256,10 @@ function offerBlock(id, it){
 }
 function render(){
   const items = Object.entries(B.items || {});
-  const changed = items.filter(([, it]) => isChanged(it));
+  const changed = items.filter(([, it]) => isChanged(it) || newFrom(it).length);
   const from = B.from || "Adrian";
   let h = `<h1>Hi ${esc(B.agentName || "")} 👋</h1><p class="sub">${esc(from)} &amp; Shernice's viewing board. Update times, offers and your views here any time — everything saves by itself and goes straight to them. Bookmark this page.</p>`;
-  if(lastSeen && changed.length) h += `<div class="news"><b>Since your last visit</b><ul>${changed.map(([id, it]) => `<li><a href="#h-${esc(id)}" data-jump="${esc(id)}">${esc(it.name)}</a>: ${esc(it.changeNote||"updated")}</li>`).join("")}</ul></div>`;
+  if(lastSeen && changed.length) h += `<div class="news"><b>Since your last visit</b><ul>${changed.map(([id, it]) => `<li><a href="#h-${esc(id)}" data-jump="${esc(id)}">${esc(it.name)}</a>: ${esc([isChanged(it) ? it.changeNote || "updated" : "", ...newFrom(it).map(m => `${m.name || "They"}: “${m.text.slice(0,90)}${m.text.length > 90 ? "…" : ""}”`)].filter(Boolean).join(" · "))}</li>`).join("")}</ul></div>`;
   const tom = items.filter(([, it]) => it.priority === "top" && it.status !== "closed").sort((a,b) => (a[1].rank||99) - (b[1].rank||99));
   if(tom.length) h += `<div class="box"><h4>What's top of mind for us now</h4><p class="meta" style="margin:0 0 4px">This changes as we view homes and find new ones.</p><ol class="tom" style="margin:4px 0 0;padding-left:20px">${tom.map(([id, it]) => `<li><a href="#h-${esc(id)}" data-jump="${esc(id)}"><b>${esc(it.name)}</b></a>${it.status==="upcoming"&&it.appt?` · ${esc(fmtWhen(it.appt))}`:it.status==="new"?" · needs a viewing time":""}</li>`).join("")}</ol></div>`;
   if((B.wants||[]).length) h += `<details class="box"><summary style="font-weight:700;cursor:pointer">What we're looking for</summary><ul style="margin:8px 0 0;padding-left:18px">${B.wants.map(w => `<li style="margin:3px 0">${esc(w)}</li>`).join("")}</ul><p class="meta" style="margin:8px 0 0">Handy when you suggest a home below.</p></details>`;
@@ -234,7 +282,19 @@ function render(){
   root.querySelectorAll("[data-appt]").forEach(i => i.onchange = () => { state[i.dataset.appt].appt = i.value; touch(300); const box = i.parentElement; box.classList.toggle("empty", !i.value); box.querySelector("span").textContent = i.value ? fmtWhen(i.value) : "Tap to set date & time"; refreshWarnings(); });
   const typing = (el, fn) => { el.oninput = () => { fn(el.value); touch(4000); }; el.onblur = () => { if(dirty) touch(200); }; };
   root.querySelectorAll("[data-view]").forEach(t => typing(t, v => { state[t.dataset.view].view = v; }));
-  root.querySelectorAll("[data-openview]").forEach(b => b.onclick = () => { const id = b.dataset.openview; viewOpen.add(id); const y = scrollY; render(); scrollTo(0, y); const t = root.querySelector(`[data-view="${CSS.escape(id)}"]`); if(t) t.focus({preventScroll:true}); });
+  const rer = () => { const y = scrollY; render(); scrollTo(0, y); };
+  root.querySelectorAll("[data-thopen]").forEach(b => b.onclick = () => { threadOpen.add(b.dataset.thopen); rer(); });
+  root.querySelectorAll("[data-draft]").forEach(t => t.oninput = () => { state[t.dataset.draft].draft = t.value; });
+  root.querySelectorAll("[data-rsend]").forEach(b => b.onclick = () => { if(sendDraft(b.dataset.rsend)){ touch(200); rer(); } });
+  root.querySelectorAll("[data-drop]").forEach(b => b.onclick = () => { dropUI[b.dataset.drop] = {reason:"", note:""}; rer(); });
+  root.querySelectorAll("[data-dcancel]").forEach(b => b.onclick = () => { delete dropUI[b.dataset.dcancel]; rer(); });
+  root.querySelectorAll("[data-dreason]").forEach(b => b.onclick = () => { dropUI[b.dataset.dreason].reason = b.dataset.r; rer(); });
+  root.querySelectorAll("[data-dnote]").forEach(t => t.oninput = () => { dropUI[t.dataset.dnote].note = t.value; });
+  root.querySelectorAll("[data-dgo]").forEach(b => b.onclick = () => { const id = b.dataset.dgo, ui = dropUI[id], st = state[id];
+    st.drop = {reason: ui.reason, note: (ui.note||"").trim().slice(0,160), at: new Date().toISOString()}; if(ui.reason === "Sold") st.state = "sold";
+    delete dropUI[id]; touch(200); rer(); });
+  root.querySelectorAll("[data-undrop]").forEach(b => b.onclick = () => { const st = state[b.dataset.undrop]; if(st.drop && st.drop.reason === "Sold" && st.state === "sold") st.state = "pending"; st.drop = null; touch(200); rer(); });
+  root.querySelectorAll("[data-openview]").forEach(b => b.onclick = () => { const id = b.dataset.openview; viewOpen.add(id); const y = scrollY; render(); scrollTo(0, y); const t = root.querySelector(`[data-draft="${CSS.escape(id)}"]`); if(t) t.focus({preventScroll:true}); });
   root.querySelectorAll("[data-counter]").forEach(t => typing(t, v => { const id = t.dataset.counter; state[id].counter = Object.assign({}, state[id].counter, {amountM: parseMoney(v)}); }));
   root.querySelectorAll("[data-cnote]").forEach(t => typing(t, v => { const id = t.dataset.cnote; state[id].counter = Object.assign({}, state[id].counter, {note: v}); }));
   ["sgUrl","sgNote"].forEach(k => { $(k).oninput = () => { suggestDraft[k === "sgUrl" ? "url" : "note"] = $(k).value; $("sgMsg").textContent = ""; }; });
@@ -259,8 +319,9 @@ function buildReplies(){
   const prev = B.replies || {}, replies = {};
   Object.entries(state).forEach(([id, s]) => {
     // Confirmed but no time yet: keep what was saved before until he picks a time.
-    if(s.state === "confirmed" && !s.appt && (B.items[id]||{}).status !== "offer"){ if(prev[id]) replies[id] = prev[id]; return; }
-    const r = {state: s.state, appt: s.state === "confirmed" ? (s.appt||"") : "", view: (s.view||"").trim().slice(0,800)};
+    const extra = {msgs: (s.msgs || []).slice(-60), drop: s.drop || null};
+    if(s.state === "confirmed" && !s.appt && (B.items[id]||{}).status !== "offer"){ replies[id] = Object.assign({state:"pending", appt:"", view:s.view||""}, prev[id] || {}, extra); return; }
+    const r = Object.assign({state: s.state, appt: s.state === "confirmed" ? (s.appt||"") : "", view: (s.view||"").trim().slice(0,800)}, extra);
     if(s.counter && typeof s.counter.amountM === "number" && s.counter.amountM > 0.3) r.counter = {amountM: s.counter.amountM, note: (s.counter.note||"").trim().slice(0,200)};
     replies[id] = r;
   });
@@ -296,9 +357,14 @@ async function sendSuggestion(){
     B.suggestions = suggestions; suggestDraft = {url:"", note:""}; const y = scrollY; render(); scrollTo(0, y); $("sgMsg").innerHTML = `<span class="ok">✓ Sent — thanks!</span>`; }
   catch(e){ b.disabled = false; b.textContent = "Send suggestion"; m.innerHTML = `<span class="err">Couldn't send — try again.</span>`; }
 }
-// Leaving the page: save anything still waiting.
-document.addEventListener("visibilitychange", () => { if(document.visibilityState === "hidden" && dirty) saveNow(true); });
-window.addEventListener("pagehide", () => { if(dirty) saveNow(true); });
+function sendDraft(id){
+  const st = state[id], t = (st.draft || "").trim(); if(!t) return false;
+  st.msgs = (st.msgs || []).concat([{text: t.slice(0,800), at: new Date().toISOString()}]); st.draft = ""; return true;
+}
+const flushDrafts = () => { let any = false; Object.keys(state).forEach(id => { if(sendDraft(id)) any = true; }); if(any && !PREVIEW) dirty = true; };
+// Leaving the page: send unsent replies and save anything still waiting.
+document.addEventListener("visibilitychange", () => { if(document.visibilityState === "hidden"){ flushDrafts(); if(dirty) saveNow(true); } });
+window.addEventListener("pagehide", () => { flushDrafts(); if(dirty) saveNow(true); });
 window.addEventListener("beforeunload", e => { if(dirty || saving){ saveNow(true); e.preventDefault(); e.returnValue = ""; } });
 })();
 </script>

@@ -22,6 +22,8 @@ For every unit you add (and any unit missing `lat`/`transit`):
 Do not write `transit` by hand, and do not change `hs_meta/places`.
 
 ## Fields the app owns
+Never change `agentDrop`, `rejectReason`, `agentViewRef`, a comment's `shared` flag, or
+the `thread` lists on `hs_board` items — they carry the conversation with Andrew.
 Also never change `nope`, `prevStatus` or `nopeRejected` (thumbs-down votes), or `seenBy`
 (who has opened each home).
 A unit with `nopeRejected: true` was turned down by both of them: never re-add
