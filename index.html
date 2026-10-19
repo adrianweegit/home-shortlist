@@ -432,7 +432,7 @@ function render(){
   if(!me) return;
   updateAppBadge();
   document.querySelectorAll(".tab").forEach(b => b.setAttribute("aria-current", b.dataset.tab === tab ? "page" : "false"));
-  const head = `<header class="top"><div class="brand"><h1>Our Kovan Home</h1><p>${units.filter(u=>u.status!=="Rejected").length} homes in play · within 6 km of Kovan</p></div>
+  const head = `<header class="top"><div class="brand"><h1>Our Kovan Home</h1><p>${units.filter(inPlay).length} homes in play · within 6 km of Kovan</p></div>
     <div class="who"><button class="bell" id="bellBtn" type="button" aria-label="Activity${unreadActs().length ? ", " + unreadActs().length + " new" : ""}">🔔${unreadActs().length ? `<span class="bdg">${unreadActs().length > 99 ? "99+" : unreadActs().length}</span>` : ""}</button>${KEYS.map(k => `<span class="av ${k} ${k===me.key?"me":""}" title="${esc(NAME[k])}">${esc(NAME[k][0])}</span>`).join("")}
     <button class="ghost" id="signout" type="button">Sign out</button></div></header>`;
   let body = "";
@@ -618,9 +618,12 @@ function newForReview(active, unrated){
   return s;
 }
 
+/* A listing that's sold or withdrawn is out of play, like a rejected home. */
+const gone = u => /sold|withdrawn/i.test((u && u.listingState) || "");
+const inPlay = u => u.status !== "Rejected" && !gone(u);
 /* ---------- Views ---------- */
 function viewTop(){
-  const active = units.filter(u => u.status !== "Rejected");
+  const active = units.filter(inPlay);
   const ranked = active.filter(u => score(u) > 0).sort((a,b) => score(b)-score(a) || ratedBy(b)-ratedBy(a) || (a.distKm??99)-(b.distKm??99));
   const top = ranked.slice(0,5);
   const unrated = active.filter(u => !ratingOf(u, me.key) && !noped(u, me.key));
@@ -664,13 +667,13 @@ function viewViewings(){
   return h;
 }
 const FILTERS = [
-  ["active","In play", u => u.status !== "Rejected"],
-  ["budget","Within budget", u => u.status !== "Rejected" && typeof u.askingM === "number" && u.askingM <= budgetOf(u)],
-  ["new","New for me", u => (isNewFor(u, me.key) || updatedFor(u, me.key)) && u.status !== "Rejected"],
-  ["mine","Not rated by me", u => u.status !== "Rejected" && !ratingOf(u, me.key) && !noped(u, me.key)],
+  ["active","In play", inPlay],
+  ["budget","Within budget", u => inPlay(u) && typeof u.askingM === "number" && u.askingM <= budgetOf(u)],
+  ["new","New for me", u => (isNewFor(u, me.key) || updatedFor(u, me.key)) && inPlay(u)],
+  ["mine","Not rated by me", u => inPlay(u) && !ratingOf(u, me.key) && !noped(u, me.key)],
   ["booked","Booked", u => u.status === "Booked"],
   ["viewed","Viewed", u => u.status === "Viewed" || u.status === "Offer"],
-  ["rejected","Rejected", u => u.status === "Rejected"],
+  ["rejected","Rejected / sold", u => !inPlay(u)],
   ["all","All", () => true]
 ];
 function homesFiltered(){
@@ -805,6 +808,7 @@ function renderSheet(fresh){
   const inner = `
     ${photoBanner(r, true)}
     ${dupBanner(r, true)}
+    ${gone(r) ? `<div class="box" style="background:var(--rose-soft)"><b>🏷️ ${esc(r.listingState)}</b>${r.updateNote?`<div style="font-size:13px;margin-top:4px">${esc(r.updateNote)}</div>`:""}<div style="font-size:12.5px;color:var(--muted);margin-top:4px">Out of Top 5 and the homes in play. Your hearts and comments are kept.</div><div class="chips" style="margin-top:8px"><button class="btn sm" type="button" data-relist="${esc(r.id)}">It's still available</button></div></div>` : ""}
     ${sheet.wasUpdated ? `<div class="box" style="background:var(--sky-soft)"><b style="color:var(--sky)">↻ Updated since you last looked:</b> ${esc(sheet.wasUpdated)}</div>` : ""}
     <div class="box"><div class="money"><span class="ask ${r.askingM>budgetOf(r)?"over":""}">${esc(money(r.askingM))}</span><span class="fair">fair ${esc(fairTxt(r))}</span></div>
       ${r.askingNote?`<div style="font-size:12.5px;color:var(--muted);margin-top:4px">${esc(r.askingNote)}</div>`:""}
@@ -1178,7 +1182,7 @@ function quickSlots(){
   return out;
 }
 function topFive(){
-  return units.filter(u => u.status !== "Rejected" && score(u) > 0).sort((a,b) => score(b)-score(a) || ratedBy(b)-ratedBy(a) || (a.distKm??99)-(b.distKm??99)).slice(0,5);
+  return units.filter(u => inPlay(u) && score(u) > 0).sort((a,b) => score(b)-score(a) || ratedBy(b)-ratedBy(a) || (a.distKm??99)-(b.distKm??99)).slice(0,5);
 }
 const onBoard = id => !!(board && board.items && board.items[id]);
 function openAsk(){
@@ -1189,7 +1193,7 @@ function openAsk(){
 function keepScroll(fn){ const sc = $("sheetScroll"), y = sc ? sc.scrollTop : 0; fn(); const s2 = $("sheetScroll"); if(s2) s2.scrollTop = y; }
 function renderAskSheet(){
   const top = topFive(), topIds = new Set(top.map(u => u.id));
-  const others = units.filter(u => u.status !== "Rejected" && !topIds.has(u.id) && (score(u) > 0 || u.status === "Booked" || u.status === "Viewed" || u.status === "Offer")).sort((a,b) => score(b)-score(a));
+  const others = units.filter(u => inPlay(u) && !topIds.has(u.id) && (score(u) > 0 || u.status === "Booked" || u.status === "Viewed" || u.status === "Offer")).sort((a,b) => score(b)-score(a));
   const row = u => {
     const it = board && board.items && board.items[u.id];
     return it ? `<div class="pick"><span style="width:20px;text-align:center">✓</span><span class="grow"><b>${esc(u.name)}</b><br><span style="color:var(--muted);font-size:12.5px">On ${esc(AGENT())}'s board · ${esc(SECTION[it.status]||"")}</span></span><span style="color:var(--rose);font-weight:700;font-size:13px">♥ ${score(u)}</span></div>`
@@ -1336,6 +1340,7 @@ document.addEventListener("click", ev => {
   if(t.dataset.reply){ openReply(); return; }
   if(t.dataset.dup){ sheet = {type:"dup", id:t.dataset.dup, q:""}; renderSheet(true); return; }
   if(t.dataset.dupyes){ mergeInto(t.dataset.dupyes, t.dataset.into); return; }
+  if(t.dataset.relist){ save(t.dataset.relist, {listingState:"Live"}, "Back in play"); return; }
   if(t.dataset.dupno){ save(t.dataset.dupno, {dupOf:null, dupChecked:true}, "Kept as a different unit"); return; }
   if(t.id === "fab"){ sheet = {type:"add"}; renderSheet(true); return; }
   if(t.dataset.open){ openUnit(t.dataset.open); return; }
