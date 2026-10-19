@@ -962,10 +962,15 @@ async function ensureBoard(){
 
 /* App -> board: keep each shared home's section, time and our offer in step with the app. */
 /* What Andrew sees about our priorities (no hearts, budget or fair values). */
-function priorityOf(u){
-  const active = units.filter(x => x.status !== "Rejected" && !x.nopeRejected && score(x) > 0).sort((a,b) => score(b) - score(a));
-  const top3 = active.slice(0,3).map(x => x.id);
-  if(top3.includes(u.id) || KEYS.every(k => ratingOf(u,k) >= 4)) return "top";
+// Ranking among the homes on Andrew's board that are still live, most combined hearts first.
+function boardRanking(){
+  const ids = Object.keys((board && board.items) || {});
+  return units.filter(x => ids.includes(x.id) && deriveItem(x).status !== "closed" && score(x) > 0)
+    .sort((a,b) => score(b) - score(a) || ((b.claude&&b.claude.n)||0) - ((a.claude&&a.claude.n)||0) || (a.distKm??99) - (b.distKm??99)).map(x => x.id);
+}
+function priorityOf(u, ranking){
+  const top = (ranking || boardRanking()).slice(0,5);
+  if(top.includes(u.id) || KEYS.every(k => ratingOf(u,k) >= 4)) return "top";
   if(score(u) > 0 || ["Booked","Viewed","Offer"].includes(u.status)) return "interested";
   return "low";
 }
@@ -1004,7 +1009,7 @@ const SECTION = {new:"Needs a time", upcoming:"Upcoming viewings", viewed:"Viewe
 let syncing = false;
 async function syncBoardFromApp(){
   if(!board || !agent || !agent.boardToken || !unitsLoaded || syncing) return;
-  const flat = {}, now = new Date().toISOString(), replies = board.replies || {};
+  const flat = {}, now = new Date().toISOString(), replies = board.replies || {}, ranking = boardRanking();
   Object.entries(board.items || {}).forEach(([id, it]) => {
     const u = units.find(z => z.id === id), d = deriveItem(u);
     const off = u && u.offer && typeof u.offer.amountM === "number" ? {amountM:u.offer.amountM, note:u.offer.note||"", at:u.offer.at||""} : null;
@@ -1014,8 +1019,9 @@ async function syncBoardFromApp(){
       if(!fromAgent) notes.push(d.status === "closed" ? d.closedReason : "Moved to " + SECTION[d.status]);
     } else if(d.status === "upcoming" && d.appt !== it.appt && (replies[id]||{}).appt !== d.appt) notes.push("Viewing time changed to " + fmtWhen(d.appt));
     if(stable(off) !== stable(it.ourOffer || null) && off) notes.push(`Our offer: ${fmtM(off.amountM)}${off.note ? " — " + off.note : ""}`);
-    if(u){ const pr = priorityOf(u), ask = askOf(u);
+    if(u){ const pr = priorityOf(u, ranking), ask = askOf(u), rk = ranking.indexOf(id) + 1 || 99;
       if(pr !== (it.priority||"")) flat[`items.${id}.priority`] = pr;
+      if(rk !== (it.rank||0)) flat[`items.${id}.rank`] = rk;
       if(ask !== (it.ask||"")) flat[`items.${id}.ask`] = ask; }
     const changed = d.status !== it.status || d.appt !== (it.appt||"") || d.closedReason !== (it.closedReason||"") || stable(off) !== stable(it.ourOffer || null);
     if(!changed) return;

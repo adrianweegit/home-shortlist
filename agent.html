@@ -179,7 +179,7 @@ call(`${BASE}/hs_board/${token}?key=${FB.apiKey}`).then(async r => {
 
 const isChanged = it => it.changedAt && Date.parse(it.changedAt) > lastSeen;
 const PR = {top:0, interested:1, low:2};
-const prRank = it => PR[it.priority] ?? 1;
+const prRank = it => (PR[it.priority] ?? 1) * 100 + (it.rank || 99);
 function card(id, it){
   const st = state[id], ch = isChanged(it), live = it.status !== "closed";
   return `<div class="box ${ch?"changed":""}" id="h-${esc(id)}">
@@ -207,8 +207,8 @@ function render(){
   const from = B.from || "Adrian";
   let h = `<h1>Hi ${esc(B.agentName || "")} 👋</h1><p class="sub">${esc(from)} &amp; Shernice's viewing board. Update times, offers and your views here any time — it goes straight to them. Bookmark this page.</p>`;
   if(lastSeen && changed.length) h += `<div class="news"><b>Since your last visit</b><ul>${changed.map(([id, it]) => `<li><a href="#h-${esc(id)}" data-jump="${esc(id)}">${esc(it.name)}</a>: ${esc(it.changeNote||"updated")}</li>`).join("")}</ul></div>`;
-  const tom = items.filter(([, it]) => it.priority === "top" && it.status !== "closed");
-  if(tom.length) h += `<div class="box"><h4>What's top of mind for us now</h4><p class="meta" style="margin:0 0 4px">This changes as we view homes and find new ones.</p><ul class="tom" style="margin:4px 0 0;padding-left:18px">${tom.map(([id, it]) => `<li><a href="#h-${esc(id)}" data-jump="${esc(id)}"><b>${esc(it.name)}</b></a>${it.status==="upcoming"&&it.appt?` · ${esc(fmtWhen(it.appt))}`:it.status==="new"?" · needs a viewing time":""}</li>`).join("")}</ul></div>`;
+  const tom = items.filter(([, it]) => it.priority === "top" && it.status !== "closed").sort((a,b) => (a[1].rank||99) - (b[1].rank||99));
+  if(tom.length) h += `<div class="box"><h4>What's top of mind for us now</h4><p class="meta" style="margin:0 0 4px">This changes as we view homes and find new ones.</p><ol class="tom" style="margin:4px 0 0;padding-left:20px">${tom.map(([id, it]) => `<li><a href="#h-${esc(id)}" data-jump="${esc(id)}"><b>${esc(it.name)}</b></a>${it.status==="upcoming"&&it.appt?` · ${esc(fmtWhen(it.appt))}`:it.status==="new"?" · needs a viewing time":""}</li>`).join("")}</ol></div>`;
   if((B.wants||[]).length) h += `<details class="box"><summary style="font-weight:700;cursor:pointer">What we're looking for</summary><ul style="margin:8px 0 0;padding-left:18px">${B.wants.map(w => `<li style="margin:3px 0">${esc(w)}</li>`).join("")}</ul><p class="meta" style="margin:8px 0 0">Handy when you suggest a home below.</p></details>`;
   h += `<div id="avail">${availHTML()}</div>`;
   SECTIONS.forEach(([k, title, hint]) => {
