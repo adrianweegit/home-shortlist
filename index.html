@@ -979,7 +979,7 @@ function suggestAsk(u){
   if(/tenanted/i.test(c)) q.push("When does the tenancy end?");
   return q.slice(0,2).join(" ");
 }
-const askOf = u => typeof u.agentAsk === "string" ? u.agentAsk : suggestAsk(u);
+const askOf = u => typeof u.agentAsk === "string" ? u.agentAsk : (["Viewed","Offer","Rejected"].includes(u.status) ? "" : suggestAsk(u));
 function boardWants(){
   const tr = places.map(p => p.short || p.label).filter(Boolean);
   return ["4 bedrooms (or 3 + study); about 1,600 sqft+ for condos built after ~2012, 1,400+ for older ones",

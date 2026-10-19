@@ -99,6 +99,7 @@ function clash(id, at){ // warning text for a chosen time, or ""
   if(!at) return "";
   const it = (B.items || {})[id] || {};
   const alreadyOurs = it.status === "upcoming" && it.appt === at; // a booking they already have counts as agreed
+  if(!["new","upcoming"].includes(it.status) || new Date(at) < new Date()) return ""; // viewed, offer, closed or past: nothing to warn about
   const wins = (B.free || []).filter(w => typeof w !== "string");
   const msgs = [];
   if(!alreadyOurs && wins.length && !wins.some(w => at.slice(0,10) === w.date && toMin(at.slice(11,16)) >= toMin(w.start) && toMin(at.slice(11,16)) + VIEW_MIN <= toMin(w.end) + 0))
