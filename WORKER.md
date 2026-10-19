@@ -102,6 +102,13 @@ about 600 m (≈8-min walk) of an MRT station**, accept **70 years or more**.
 Note the lease under `concerns` when it is below 80 (e.g. "Lease ~73 yrs").
 All other rules (budget, school runs, size, 6 km) still apply.
 
+## Floor plans we add ourselves (19 Oct 2026)
+A unit with `planDoc: {at, by}` has a floor plan Adrian or Shernice uploaded; the image
+is in `hs_meta/plan_<unitId>` (field `dataUrl`, a JPEG data URL). It takes priority over
+`floorPlanUrl`. When `planDoc.at` is newer than the unit's `claude.at`, read it, apply
+layout rules 1–3 (add or remove the matching concern tags) and re-rate. Never change or
+delete `planDoc` or the `plan_` docs, and don't add "No floor plan in listing" to such units.
+
 ## Landed homes (added 17 Oct 2026)
 Landed homes are now in scope too: cluster houses, strata terraces, townhouses
 and other landed homes within 6 km of Kovan.

@@ -69,7 +69,7 @@ textarea{min-height:70px;resize:vertical}
 <div id="previewBar" hidden style="position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:10px;padding:10px 16px;background:var(--kaya-soft,#FBF1D6);border-bottom:1px solid rgba(0,0,0,.08);font-size:14px">
   <a href="./" style="font-weight:700;color:inherit;text-decoration:none;font-size:15px">‹ Back to our app</a><span style="flex:1"></span><span style="opacity:.7">Preview of Andrew's board</span></div>
 <div class="wrap" id="root"><h1>Loading…</h1></div>
-<div class="bar" id="bar" hidden><div class="in"><span id="msg" style="font-size:13px;flex:1"></span><button class="send" id="send" type="button" disabled>Save changes</button></div></div>
+<div class="bar" id="bar" hidden><div class="in"><span id="msg" style="font-size:13px;flex:1"></span><button class="send" id="send" type="button" hidden>Try again</button></div></div>
 <script src="config.js"></script>
 <script>
 (function(){
@@ -146,7 +146,7 @@ async function call(url, opts){
     catch(e){ if(i === 2) throw e; await new Promise(z => setTimeout(z, 800 * (i + 1))); }
   }
 }
-const commit = (fields, mask, transforms) => call(`${BASE}:commit?key=${FB.apiKey}`, {method:"POST", headers:{"Content-Type":"application/json"},
+const commit = (fields, mask, transforms, keepalive) => call(`${BASE}:commit?key=${FB.apiKey}`, {method:"POST", keepalive: !!keepalive, headers:{"Content-Type":"application/json"},
   body: JSON.stringify({writes: [{update: {name: DOC, fields}, updateMask: {fieldPaths: mask}, updateTransforms: transforms.map(f => ({fieldPath: f, setToServerValue: "REQUEST_TIME"})), currentDocument: {exists: true}}]})});
 
 const SECTIONS = [["new","Needs a viewing time","New homes, or ones still to be scheduled"],["upcoming","Upcoming viewings",""],["offer","Offers","Our offers and the seller's response"],["viewed","Viewed","Share anything new after the viewing"],["closed","Closed","No need to follow up"]];
@@ -173,7 +173,7 @@ call(`${BASE}/hs_board/${token}?key=${FB.apiKey}`).then(async r => {
   const R = B.replies || {};
   Object.keys(B.items || {}).forEach(id => { const p = R[id] || {}, it = B.items[id], up = it.status === "upcoming" && it.appt;
     state[id] = {state: up ? "confirmed" : (p.state || "pending"), appt: up ? it.appt : (p.appt || ""), view: p.view || "", counter: p.counter || null}; });
-  render(); $("bar").hidden = false;
+  render(); $("bar").hidden = false; $("msg").innerHTML = `<span class="meta">${PREVIEW ? "Preview — taps here aren't saved." : "Everything you change saves by itself."}</span>`;
   if(!PREVIEW) commit({}, [], ["agentSeenAt"]).catch(() => {}); // mark this visit (not when we preview it)
 }).catch(e => {
   root.innerHTML = e && e.gone
@@ -210,7 +210,7 @@ function render(){
   const items = Object.entries(B.items || {});
   const changed = items.filter(([, it]) => isChanged(it));
   const from = B.from || "Adrian";
-  let h = `<h1>Hi ${esc(B.agentName || "")} 👋</h1><p class="sub">${esc(from)} &amp; Shernice's viewing board. Update times, offers and your views here any time — it goes straight to them. Bookmark this page.</p>`;
+  let h = `<h1>Hi ${esc(B.agentName || "")} 👋</h1><p class="sub">${esc(from)} &amp; Shernice's viewing board. Update times, offers and your views here any time — everything saves by itself and goes straight to them. Bookmark this page.</p>`;
   if(lastSeen && changed.length) h += `<div class="news"><b>Since your last visit</b><ul>${changed.map(([id, it]) => `<li><a href="#h-${esc(id)}" data-jump="${esc(id)}">${esc(it.name)}</a>: ${esc(it.changeNote||"updated")}</li>`).join("")}</ul></div>`;
   const tom = items.filter(([, it]) => it.priority === "top" && it.status !== "closed").sort((a,b) => (a[1].rank||99) - (b[1].rank||99));
   if(tom.length) h += `<div class="box"><h4>What's top of mind for us now</h4><p class="meta" style="margin:0 0 4px">This changes as we view homes and find new ones.</p><ol class="tom" style="margin:4px 0 0;padding-left:20px">${tom.map(([id, it]) => `<li><a href="#h-${esc(id)}" data-jump="${esc(id)}"><b>${esc(it.name)}</b></a>${it.status==="upcoming"&&it.appt?` · ${esc(fmtWhen(it.appt))}`:it.status==="new"?" · needs a viewing time":""}</li>`).join("")}</ol></div>`;
@@ -225,17 +225,21 @@ function render(){
   h += `<h2 class="sec">Suggest a home <small>a unit you think suits them</small></h2>
     <div class="box"><label>Listing link<input id="sgUrl" type="url" inputmode="url" placeholder="https://www.propertyguru.com.sg/listing/…" value="${esc(suggestDraft.url)}"></label>
     <label>Why it suits them (optional)<input id="sgNote" maxlength="200" value="${esc(suggestDraft.note)}"></label>
+    <button class="send" type="button" id="sgSend" style="margin-top:10px;width:100%">Send suggestion</button><div id="sgMsg" style="font-size:13px;margin-top:6px"></div>
     ${(B.suggestions||[]).filter(x => x.url).length ? `<div class="meta" style="margin-top:8px">Already suggested: ${B.suggestions.filter(x => x.url).map(s => esc((s.url||"").replace(/^https?:\/\/(www\.)?/,"").slice(0,40))).join(", ")}</div>` : ""}</div>
     <h2 class="sec">Note for them <small>optional</small></h2><div class="box"><textarea id="note" maxlength="800" placeholder="Anything else">${esc(B.agentNote||"")}</textarea></div>`;
   root.innerHTML = h;
-  root.querySelectorAll("[data-st]").forEach(b => b.onclick = () => { state[b.dataset.h].state = b.dataset.st; touch(); const y = scrollY; render(); scrollTo(0, y); });
-  root.querySelectorAll("[data-appt]").forEach(i => i.onchange = () => { state[i.dataset.appt].appt = i.value; touch(); const box = i.parentElement; box.classList.toggle("empty", !i.value); box.querySelector("span").textContent = i.value ? fmtWhen(i.value) : "Tap to set date & time"; refreshWarnings(); });
-  root.querySelectorAll("[data-view]").forEach(t => t.oninput = () => { state[t.dataset.view].view = t.value; touch(); });
+  root.querySelectorAll("[data-st]").forEach(b => b.onclick = () => { const id = b.dataset.h, s = state[id]; s.state = b.dataset.st; touch(); const y = scrollY; render(); scrollTo(0, y);
+    if(s.state === "confirmed" && !s.appt){ const i = root.querySelector(`[data-appt="${CSS.escape(id)}"]`); if(i){ try { i.showPicker(); } catch(e){ i.focus(); } } } });
+  root.querySelectorAll("[data-appt]").forEach(i => i.onchange = () => { state[i.dataset.appt].appt = i.value; touch(300); const box = i.parentElement; box.classList.toggle("empty", !i.value); box.querySelector("span").textContent = i.value ? fmtWhen(i.value) : "Tap to set date & time"; refreshWarnings(); });
+  const typing = (el, fn) => { el.oninput = () => { fn(el.value); touch(4000); }; el.onblur = () => { if(dirty) touch(200); }; };
+  root.querySelectorAll("[data-view]").forEach(t => typing(t, v => { state[t.dataset.view].view = v; }));
   root.querySelectorAll("[data-openview]").forEach(b => b.onclick = () => { const id = b.dataset.openview; viewOpen.add(id); const y = scrollY; render(); scrollTo(0, y); const t = root.querySelector(`[data-view="${CSS.escape(id)}"]`); if(t) t.focus({preventScroll:true}); });
-  root.querySelectorAll("[data-counter]").forEach(t => t.oninput = () => { const id = t.dataset.counter; const m = parseMoney(t.value); state[id].counter = Object.assign({}, state[id].counter, {amountM: m}); touch(); });
-  root.querySelectorAll("[data-cnote]").forEach(t => t.oninput = () => { const id = t.dataset.cnote; state[id].counter = Object.assign({}, state[id].counter, {note: t.value}); touch(); });
-  ["sgUrl","sgNote"].forEach(k => { $(k).oninput = () => { suggestDraft[k === "sgUrl" ? "url" : "note"] = $(k).value; touch(); }; });
-  $("note").oninput = () => { B.agentNote = $("note").value; touch(); };
+  root.querySelectorAll("[data-counter]").forEach(t => typing(t, v => { const id = t.dataset.counter; state[id].counter = Object.assign({}, state[id].counter, {amountM: parseMoney(v)}); }));
+  root.querySelectorAll("[data-cnote]").forEach(t => typing(t, v => { const id = t.dataset.cnote; state[id].counter = Object.assign({}, state[id].counter, {note: v}); }));
+  ["sgUrl","sgNote"].forEach(k => { $(k).oninput = () => { suggestDraft[k === "sgUrl" ? "url" : "note"] = $(k).value; $("sgMsg").textContent = ""; }; });
+  $("sgSend").onclick = sendSuggestion;
+  typing($("note"), v => { B.agentNote = v; });
   wireSlots();
   root.querySelectorAll("[data-jump]").forEach(l => l.onclick = ev => { ev.preventDefault(); const el = document.getElementById("h-" + l.dataset.jump); if(el) el.scrollIntoView({behavior:"smooth", block:"start"}); }); // keep the board token in the URL
 }
@@ -243,34 +247,59 @@ function refreshWarnings(){
   root.querySelectorAll("[data-warn]").forEach(el => { const id = el.dataset.warn, s = state[id], msg = s.state === "confirmed" ? clash(id, s.appt) : ""; el.hidden = !msg; el.textContent = "⚠️ " + msg; });
   const a = $("avail"); if(a) { a.innerHTML = availHTML(); wireSlots(); }
 }
-function touch(){ dirty = true; $("send").disabled = false; $("msg").textContent = ""; }
-$("send").onclick = async () => {
-  const missing = Object.entries(state).filter(([id, s]) => s.state === "confirmed" && !s.appt && (B.items[id]||{}).status !== "closed" && (B.items[id]||{}).status !== "offer");
-  if(missing.length){ $("msg").innerHTML = `<span class="err">Add a date &amp; time for ${esc(missing.map(([id]) => B.items[id].name).join(", "))}.</span>`; return; }
-  const sg = suggestDraft.url.trim();
-  if(sg && !/^https?:\/\/\S+\.\S+/.test(sg)){ $("msg").innerHTML = `<span class="err">The suggested link should start with https://</span>`; return; }
-  const btn = $("send"); btn.disabled = true; btn.textContent = "Saving…";
-  const replies = {};
+/* Autosave: taps save straight away, typing saves after a pause or when he leaves the box. */
+let saveTimer = null, saving = false, again = false;
+function status(html){ $("msg").innerHTML = html; }
+function touch(delay){
+  if(PREVIEW){ status(`<span class="meta">Preview only — your taps here aren't saved to Andrew's board.</span>`); return; }
+  dirty = true; $("send").hidden = true; status(`<span class="meta">Saving…</span>`);
+  clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, delay ?? 300);
+}
+function buildReplies(){
+  const prev = B.replies || {}, replies = {};
   Object.entries(state).forEach(([id, s]) => {
+    // Confirmed but no time yet: keep what was saved before until he picks a time.
+    if(s.state === "confirmed" && !s.appt && (B.items[id]||{}).status !== "offer"){ if(prev[id]) replies[id] = prev[id]; return; }
     const r = {state: s.state, appt: s.state === "confirmed" ? (s.appt||"") : "", view: (s.view||"").trim().slice(0,800)};
     if(s.counter && typeof s.counter.amountM === "number" && s.counter.amountM > 0.3) r.counter = {amountM: s.counter.amountM, note: (s.counter.note||"").trim().slice(0,200)};
     replies[id] = r;
   });
-  const suggestions = (B.suggestions || []).slice();
-  if(sg) suggestions.push({url: sg, note: suggestDraft.note.trim().slice(0,200), at: new Date().toISOString()});
+  return replies;
+}
+async function saveNow(keepalive){
+  clearTimeout(saveTimer);
+  if(!dirty) return;
+  if(saving){ again = true; return; }
+  saving = true; dirty = false;
+  const replies = buildReplies(), note = (B.agentNote||"").trim().slice(0,800);
   try {
-    const r = await commit({replies: enc(replies), agentNote: enc((B.agentNote||"").trim().slice(0,800)), suggestions: enc(suggestions)}, ["replies","agentNote","suggestions"], ["replyAt"]);
+    const r = await commit({replies: enc(replies), agentNote: enc(note)}, ["replies","agentNote"], ["replyAt"], keepalive);
     if(!r.ok) throw new Error("http " + r.status);
-    B.suggestions = suggestions; suggestDraft = {url:"", note:""}; dirty = false;
-    if(sg) render();
-    $("msg").innerHTML = `<span class="ok">Saved — ${esc(B.from || "Adrian")} &amp; Shernice can see it now.</span>`;
-    btn.textContent = "Save changes";
+    B.replies = replies;
+    const waiting = Object.entries(state).filter(([id, s]) => s.state === "confirmed" && !s.appt && (B.items[id]||{}).status !== "offer" && (B.items[id]||{}).status !== "closed");
+    status(waiting.length ? `<span class="err">Pick a date &amp; time for ${esc(waiting.map(([id]) => B.items[id].name).join(", "))} — it saves once you do.</span>` : `<span class="ok">✓ All changes saved — ${esc(B.from || "Adrian")} &amp; Shernice can see them.</span>`);
   } catch(e){
-    $("msg").innerHTML = `<span class="err">Couldn't save — check your connection and try again.</span>`;
-    btn.disabled = false; btn.textContent = "Try again";
+    dirty = true; status(`<span class="err">Couldn't save — check your connection.</span>`); $("send").hidden = false;
+  } finally {
+    saving = false;
+    if(again){ again = false; if(dirty) saveNow(); }
   }
-};
-window.addEventListener("beforeunload", e => { if(dirty){ e.preventDefault(); e.returnValue = ""; } });
+}
+$("send").onclick = () => { $("send").hidden = true; dirty = true; saveNow(); };
+async function sendSuggestion(){
+  const sg = suggestDraft.url.trim(), m = $("sgMsg");
+  if(PREVIEW){ m.innerHTML = `<span class="meta">Preview only — not sent.</span>`; return; }
+  if(!/^https?:\/\/\S+\.\S+/.test(sg)){ m.innerHTML = `<span class="err">Paste the full listing link (starting with https://).</span>`; return; }
+  const b = $("sgSend"); b.disabled = true; b.textContent = "Sending…";
+  const suggestions = (B.suggestions || []).concat([{url: sg, note: suggestDraft.note.trim().slice(0,200), at: new Date().toISOString()}]);
+  try { const r = await commit({suggestions: enc(suggestions)}, ["suggestions"], ["replyAt"]); if(!r.ok) throw new Error("http " + r.status);
+    B.suggestions = suggestions; suggestDraft = {url:"", note:""}; const y = scrollY; render(); scrollTo(0, y); $("sgMsg").innerHTML = `<span class="ok">✓ Sent — thanks!</span>`; }
+  catch(e){ b.disabled = false; b.textContent = "Send suggestion"; m.innerHTML = `<span class="err">Couldn't send — try again.</span>`; }
+}
+// Leaving the page: save anything still waiting.
+document.addEventListener("visibilitychange", () => { if(document.visibilityState === "hidden" && dirty) saveNow(true); });
+window.addEventListener("pagehide", () => { if(dirty) saveNow(true); });
+window.addEventListener("beforeunload", e => { if(dirty || saving){ saveNow(true); e.preventDefault(); e.returnValue = ""; } });
 })();
 </script>
 </body>
