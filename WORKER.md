@@ -29,6 +29,14 @@ Also never change `nope`, `prevStatus` or `nopeRejected` (thumbs-down votes), or
 A unit with `nopeRejected: true` was turned down by both of them: never re-add
 that listing in a rescan.
 
+## Sold / withdrawn listings (19 Oct 2026)
+Never set `listingState` back to "Live" when it says sold or withdrawn and either
+`listingStateBy` is set (Adrian, Shernice or Andrew decided) or it ends "(per agent)".
+For other sold/withdrawn units, only revive one if the listing ID appears on the
+development's current PropertyGuru search results page — a single listing page can be
+an old cached copy that still shows a delisted unit (this happened with Riversails
+500240802). If in doubt, leave it as it is.
+
 ## New and Updated badges
 - New units: set `isNew: true` (each person's "New" badge clears when they open it).
 - When a refresh finds a real change on an existing unit (asking price, listing
