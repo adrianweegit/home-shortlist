@@ -361,28 +361,28 @@ function render(){
     ${(B.suggestions||[]).filter(x => x.url).length ? `<div class="meta" style="margin-top:8px">Already suggested: ${B.suggestions.filter(x => x.url).map(s => esc((s.url||"").replace(/^https?:\/\/(www\.)?/,"").slice(0,40))).join(", ")}</div>` : ""}</div>
     <h2 class="sec">Note for them <small>optional</small></h2><div class="box"><textarea id="note" maxlength="800" placeholder="Anything else">${esc(B.agentNote||"")}</textarea></div>`;
   root.innerHTML = h;
-  root.querySelectorAll("[data-st]").forEach(b => b.onclick = () => { const id = b.dataset.h || b.dataset.st, s = state[id]; s.state = b.dataset.stv || b.dataset.st; touch(); const y = scrollY; render(); scrollTo(0, y);
+  root.querySelectorAll("[data-st]").forEach(b => b.onclick = () => { const id = b.dataset.h || b.dataset.st, s = state[id]; s.state = b.dataset.stv || b.dataset.st; touch(300, id); const y = scrollY; render(); scrollTo(0, y);
     if(s.state === "confirmed" && !s.appt){ const i = root.querySelector(`[data-appt="${CSS.escape(id)}"]`); if(i){ try { i.showPicker(); } catch(e){ i.focus(); } } } });
-  root.querySelectorAll("[data-appt]").forEach(i => i.onchange = () => { state[i.dataset.appt].appt = i.value; touch(300); const box = i.parentElement; box.classList.toggle("empty", !i.value); box.querySelector("span").textContent = i.value ? fmtWhen(i.value) : "Tap to set date & time"; refreshWarnings(); });
-  const typing = (el, fn) => { el.oninput = () => { fn(el.value); touch(4000); }; el.onblur = () => { if(dirty) touch(200); }; };
-  root.querySelectorAll("[data-view]").forEach(t => typing(t, v => { state[t.dataset.view].view = v; }));
+  root.querySelectorAll("[data-appt]").forEach(i => i.onchange = () => { state[i.dataset.appt].appt = i.value; touch(300, i.dataset.appt); const box = i.parentElement; box.classList.toggle("empty", !i.value); box.querySelector("span").textContent = i.value ? fmtWhen(i.value) : "Tap to set date & time"; refreshWarnings(); });
+  const typing = (el, fn, id) => { el.oninput = () => { fn(el.value); touch(4000, id); }; el.onblur = () => { if(dirty) touch(200, id); }; };
+  root.querySelectorAll("[data-view]").forEach(t => typing(t, v => { state[t.dataset.view].view = v; }, t.dataset.view));
   const rer = () => { const y = scrollY; render(); scrollTo(0, y); };
   root.querySelectorAll("[data-attach]").forEach(b => b.onclick = () => { if(!b.dataset.attach && !b.dataset.url){ $("sgMsg").innerHTML = `<span class="err">Paste the listing link first, then attach.</span>`; return; } pickFile(b.dataset.attach, b.dataset.url, b.dataset.kind); });
   root.querySelectorAll("[data-file]").forEach(b => b.onclick = () => openFile(b.dataset.file));
   root.querySelectorAll("[data-thopen]").forEach(b => b.onclick = () => { threadOpen.add(b.dataset.thopen); rer(); });
   root.querySelectorAll("[data-draft]").forEach(t => t.oninput = () => { state[t.dataset.draft].draft = t.value; });
-  root.querySelectorAll("[data-rsend]").forEach(b => b.onclick = () => { if(sendDraft(b.dataset.rsend)){ touch(200); rer(); } });
+  root.querySelectorAll("[data-rsend]").forEach(b => b.onclick = () => { if(sendDraft(b.dataset.rsend)){ touch(200, b.dataset.rsend); rer(); } });
   root.querySelectorAll("[data-drop]").forEach(b => b.onclick = () => { dropUI[b.dataset.drop] = {reason:"", note:""}; rer(); });
   root.querySelectorAll("[data-dcancel]").forEach(b => b.onclick = () => { delete dropUI[b.dataset.dcancel]; rer(); });
   root.querySelectorAll("[data-dreason]").forEach(b => b.onclick = () => { dropUI[b.dataset.dreason].reason = b.dataset.r; rer(); });
   root.querySelectorAll("[data-dnote]").forEach(t => t.oninput = () => { dropUI[t.dataset.dnote].note = t.value; });
   root.querySelectorAll("[data-dgo]").forEach(b => b.onclick = () => { const id = b.dataset.dgo, ui = dropUI[id], st = state[id];
     st.drop = {reason: ui.reason, note: (ui.note||"").trim().slice(0,160), at: new Date().toISOString()}; if(ui.reason === "Sold") st.state = "sold";
-    delete dropUI[id]; touch(200); rer(); });
-  root.querySelectorAll("[data-undrop]").forEach(b => b.onclick = () => { const st = state[b.dataset.undrop]; if(st.drop && st.drop.reason === "Sold" && st.state === "sold") st.state = "pending"; st.drop = null; touch(200); rer(); });
+    delete dropUI[id]; touch(200, id); rer(); });
+  root.querySelectorAll("[data-undrop]").forEach(b => b.onclick = () => { const st = state[b.dataset.undrop]; if(st.drop && st.drop.reason === "Sold" && st.state === "sold") st.state = "pending"; st.drop = null; touch(200, b.dataset.undrop); rer(); });
   root.querySelectorAll("[data-openview]").forEach(b => b.onclick = () => { const id = b.dataset.openview; viewOpen.add(id); const y = scrollY; render(); scrollTo(0, y); const t = root.querySelector(`[data-draft="${CSS.escape(id)}"]`); if(t) t.focus({preventScroll:true}); });
-  root.querySelectorAll("[data-counter]").forEach(t => typing(t, v => { const id = t.dataset.counter; state[id].counter = Object.assign({}, state[id].counter, {amountM: parseMoney(v)}); }));
-  root.querySelectorAll("[data-cnote]").forEach(t => typing(t, v => { const id = t.dataset.cnote; state[id].counter = Object.assign({}, state[id].counter, {note: v}); }));
+  root.querySelectorAll("[data-counter]").forEach(t => typing(t, v => { const id = t.dataset.counter; state[id].counter = Object.assign({}, state[id].counter, {amountM: parseMoney(v)}); }, t.dataset.counter));
+  root.querySelectorAll("[data-cnote]").forEach(t => typing(t, v => { const id = t.dataset.cnote; state[id].counter = Object.assign({}, state[id].counter, {note: v}); }, t.dataset.cnote));
   ["sgUrl","sgNote"].forEach(k => { $(k).oninput = () => { suggestDraft[k === "sgUrl" ? "url" : "note"] = $(k).value; $("sgMsg").textContent = ""; const a = root.querySelector('[data-attach=""]'); if(a) a.dataset.url = suggestDraft.url.trim(); }; });
   $("sgSend").onclick = sendSuggestion;
   typing($("note"), v => { B.agentNote = v; });
@@ -396,7 +396,9 @@ function refreshWarnings(){
 /* Autosave: taps save straight away, typing saves after a pause or when he leaves the box. */
 let saveTimer = null, saving = false, again = false;
 function status(html){ $("msg").innerHTML = html; }
-function touch(delay){
+const touched = new Set(); // homes he changed in this session — only these are sent
+function touch(delay, id){
+  if(id) touched.add(id);
   if(PREVIEW){ status(`<span class="meta">Preview only — your taps here aren't saved to Andrew's board.</span>`); return; }
   dirty = true; $("send").hidden = true; status(`<span class="meta">Saving…</span>`);
   clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, delay ?? 300);
@@ -418,7 +420,14 @@ async function saveNow(keepalive){
   if(!dirty) return;
   if(saving){ again = true; return; }
   saving = true; dirty = false;
-  const replies = buildReplies(), note = (B.agentNote||"").trim().slice(0,800);
+  // Send only the homes he touched, on top of what the board holds right now, so a long-open
+  // page never overwrites a time Adrian changed in the app meanwhile.
+  let base = B.replies || {}, items = B.items || {};
+  if(!keepalive){ try { const r0 = await call(`${BASE}/hs_board/${token}?key=${FB.apiKey}`); if(r0.ok){ const d0 = dec({mapValue:{fields:(await r0.json()).fields || {}}}); base = d0.replies || {}; items = d0.items || {}; B.items = items; B.files = d0.files || B.files; } } catch(e){} }
+  const mine = buildReplies(), replies = Object.assign({}, base);
+  touched.forEach(id => { if(mine[id]) replies[id] = mine[id]; });
+  Object.keys(state).forEach(id => { if(!touched.has(id) && items[id] && items[id].status === "upcoming" && items[id].appt){ state[id].appt = items[id].appt; state[id].state = "confirmed"; } });
+  const note = (B.agentNote||"").trim().slice(0,800);
   try {
     const r = await commit({replies: enc(replies), agentNote: enc(note)}, ["replies","agentNote"], ["replyAt"], keepalive);
     if(!r.ok) throw new Error("http " + r.status);
@@ -447,7 +456,7 @@ function sendDraft(id){
   const st = state[id], t = (st.draft || "").trim(); if(!t) return false;
   st.msgs = (st.msgs || []).concat([{text: t.slice(0,800), at: new Date().toISOString()}]); st.draft = ""; return true;
 }
-const flushDrafts = () => { let any = false; Object.keys(state).forEach(id => { if(sendDraft(id)) any = true; }); if(any && !PREVIEW) dirty = true; };
+const flushDrafts = () => { let any = false; Object.keys(state).forEach(id => { if(sendDraft(id)){ any = true; touched.add(id); } }); if(any && !PREVIEW) dirty = true; };
 // Leaving the page: send unsent replies and save anything still waiting.
 document.addEventListener("visibilitychange", () => { if(document.visibilityState === "hidden"){ flushDrafts(); if(dirty) saveNow(true); } });
 window.addEventListener("pagehide", () => { flushDrafts(); if(dirty) saveNow(true); });
