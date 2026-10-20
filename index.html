@@ -156,6 +156,11 @@ h2.sec small{font:500 13px var(--f-body);color:var(--muted)}
 .updbar{position:fixed;left:50%;transform:translateX(-50%);top:max(10px,env(safe-area-inset-top));z-index:90;border:0;border-radius:999px;padding:10px 16px;background:var(--pandan);color:#fff;font:inherit;font-size:14px;box-shadow:0 6px 18px rgba(0,0,0,.25);cursor:pointer}
 .ver{text-align:center;padding:18px 0 110px}
 .ver button{background:none;border:0;color:var(--muted);font:inherit;font-size:12px;cursor:pointer}
+.afiles{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
+.afile{display:flex;align-items:center;gap:8px}
+.afile .fchip{flex:1;min-width:0;display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:4px 8px 4px 4px;font:inherit;font-size:12.5px;color:inherit;cursor:pointer;text-align:left}
+.afile .fchip img{width:36px;height:36px;object-fit:cover;border-radius:6px;flex:0 0 36px}.afile .fico{width:36px;height:36px;display:grid;place-items:center;font-size:20px}
+.afile .x{background:none;border:0;color:var(--muted);font-size:18px;padding:4px;cursor:pointer}
 .withA{border:1px solid var(--pandan)}
 .aask{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;font-size:13.5px;background:var(--kaya-soft);border-radius:10px;padding:8px 10px;margin-bottom:8px}
 .aask .grow{flex:1;min-width:0}
@@ -456,7 +461,7 @@ async function save(id, data, okMsg){
 }
 
 /* ---------- App version: tell them when a newer one is published ---------- */
-const APP_VERSION = "2026-10-20T08:11+08:00"; // bump on every publish
+const APP_VERSION = "2026-10-20T13:33+08:00"; // bump on every publish
 let swReg = null, lastUpdCheck = 0, newVersion = false;
 async function checkForUpdate(force){
   if(newVersion || (!force && Date.now() - lastUpdCheck < 60000)) return;
@@ -840,7 +845,9 @@ async function openPlan(id){
   if($("pvDel")) $("pvDel").onclick = () => removePlan(id);
   let src = mine ? planCache.get(id) : u.floorPlanUrl;
   if(mine && !src){
-    try { const d = await db.doc("hs_meta/plan_" + id).get(); src = d.exists ? d.data().dataUrl : ""; if(src) planCache.set(id, src); } catch(e){}
+    try { const d = await db.doc("hs_meta/plan_" + id).get(); const dd = d.exists ? d.data() : {};
+      if(dd.pdf){ closePlan(); openPdf(dd.pdf, (u.name||"") + " · floor plan"); return; }
+      src = dd.dataUrl || ""; if(src) planCache.set(id, src); } catch(e){}
   }
   const sc = $("pvSc"); if(!sc) return;
   if(!src){ sc.innerHTML = `<div class="pvload">Couldn't load the plan — check your connection.</div>`; return; }
@@ -890,6 +897,7 @@ function actLine(a){
   const who = NAME[a.by] || (a.by === "claude" ? "Claude" : a.by);
   if(a.kind === "rate") return {head:`${who} gave <b class="hrt">${"♥".repeat(a.n||0)}</b> <span class="muted">${a.n}/5</span>`, text:""};
   if(a.kind === "nope") return {head:`${who} gave a 👎 <span class="muted">not for us</span>`, text:a.text||""};
+  if(a.kind === "file") return {head:`${who} attached a file`, text:a.text||""};
   if(a.kind === "plan") return {head:`${who} added a floor plan`, text:a.text||""};
   if(a.kind === "suggest") return {head:`${who} suggested a home`, text:a.text||""};
   return {head:`${who} commented`, text:a.text||""};
@@ -933,11 +941,61 @@ function openUnit(id, toChat){
 }
 /* Comments Andrew can see: on homes that are on his board, a comment can be shared.
    It's on by default when replying to him (his comment is the latest), off otherwise. */
+/* Files Andrew attached on his board (floor plans from seller agents). The board keeps a
+   list with thumbnails; the file itself lives in hs_board/{token}/files/{id}. */
+const agentFiles = r => ((board && board.files) || []).filter(f => f.unitId === r.id || (f.forUrl && r.url && f.forUrl.split("#")[0] === r.url.split("#")[0]));
+function agentFilesHTML(r){
+  const list = agentFiles(r); if(!list.length) return "";
+  return `<div class="afiles">${list.map(f => { const isPlan = r.planDoc && r.planDoc.from === f.id, img = f.type !== "application/pdf";
+    return `<div class="afile"><button class="fchip" type="button" data-afile="${esc(f.id)}" data-unit="${esc(r.id)}">${f.thumb ? `<img src="${esc(f.thumb)}" alt="">` : `<span class="fico">📄</span>`}<span class="grow" style="min-width:0;text-align:left"><b>${esc((f.name||"file").slice(0,30))}</b><br><span class="muted">${esc(AGENT())} · ${esc(ago(f.at))}</span></span></button>
+      ${isPlan ? `<span class="muted" style="font-size:12px">📐 Floor plan</span>` : `<button class="btn sm" type="button" data-useplan="${esc(f.id)}" data-unit="${esc(r.id)}">Use as floor plan</button>`}<button class="x" type="button" data-rmfile="${esc(f.id)}" data-unit="${esc(r.id)}" aria-label="Remove">×</button></div>`; }).join("")}</div>`;
+}
+async function loadAgentFile(id){
+  const d = await db.doc(`hs_board/${agent.boardToken}/files/${id}`).get(); if(!d.exists) throw new Error("gone"); return d.data();
+}
+async function openAgentFile(id, unitId){
+  try { const d = await loadAgentFile(id);
+    if(d.type === "application/pdf"){ openPdf(d.dataUrl, d.name); return; }
+    const u = units.find(x => x.id === unitId); showImage(d.dataUrl, (u && u.name || "") + " · " + (d.name || "file"), [{label:"Use as floor plan", fn:() => useAsPlan(id, unitId)}]);
+  } catch(e){ toast("Couldn't open the file — check your connection"); }
+}
+function openPdf(dataUrl, name){
+  const bin = atob(dataUrl.split(",")[1]), arr = new Uint8Array(bin.length); for(let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  const url = URL.createObjectURL(new Blob([arr], {type:"application/pdf"}));
+  const el = document.createElement("div"); el.id = "planView"; el.className = "planv";
+  el.innerHTML = `<div class="pvbar"><b class="grow">${esc(name || "PDF")}</b><button class="close" type="button" id="pvClose" aria-label="Close">×</button></div><iframe class="pvsc" src="${url}" style="border:0;width:100%"></iframe><div class="pvfoot"><span class="muted grow">If the PDF doesn't show, open it in Safari.</span><a class="btn sm" href="${url}" target="_blank" rel="noopener">Open ↗</a></div>`;
+  closePlan(); document.body.appendChild(el); document.documentElement.style.overflow = "hidden"; $("pvClose").onclick = () => { closePlan(); URL.revokeObjectURL(url); };
+}
+function showImage(src, title, actions){
+  closePlan();
+  const el = document.createElement("div"); el.id = "planView"; el.className = "planv";
+  el.innerHTML = `<div class="pvbar"><b class="grow">${esc(title)}</b><button class="close" type="button" id="pvClose" aria-label="Close">×</button></div><div class="pvsc" id="pvSc"><img id="pvImg" alt="" src="${esc(src)}"></div><div class="pvfoot"><span class="muted grow">tap to zoom</span>${(actions||[]).map((a,i) => `<button class="btn sm" type="button" data-pvact="${i}">${esc(a.label)}</button>`).join("")}</div>`;
+  document.body.appendChild(el); document.documentElement.style.overflow = "hidden";
+  $("pvClose").onclick = closePlan; (actions||[]).forEach((a,i) => { el.querySelector(`[data-pvact="${i}"]`).onclick = a.fn; });
+  const img = $("pvImg"), sc = $("pvSc"); img.onclick = ev => { const z = img.classList.toggle("z"); if(z){ const r = img.getBoundingClientRect(); requestAnimationFrame(() => { sc.scrollLeft = (ev.clientX - r.left) / r.width * img.clientWidth - sc.clientWidth/2; sc.scrollTop = (ev.clientY - r.top) / r.height * img.clientHeight - sc.clientHeight/2; }); } };
+}
+async function useAsPlan(id, unitId){
+  const u = units.find(x => x.id === unitId); if(!u) return;
+  toast("Setting floor plan…");
+  try { const d = await loadAgentFile(id), at = new Date().toISOString();
+    if(d.type === "application/pdf"){ await db.doc("hs_meta/plan_" + unitId).set({unitId, pdf:d.dataUrl, name:d.name||"", by:"agent", at}); planCache.delete(unitId); }
+    else { await db.doc("hs_meta/plan_" + unitId).set({unitId, dataUrl:d.dataUrl, by:"agent", at}); planCache.set(unitId, d.dataUrl); }
+    await unitRef(unitId).update({planDoc:{at, by:"agent", from:id, pdf:d.type === "application/pdf"}, concerns:FV.arrayRemove("No floor plan in listing")});
+    logAct(null, {kind:"plan", by:me.key, unitId, unitName:u.name||"", text:"Used " + AGENT() + "'s file as the floor plan"});
+    toast("Floor plan set — Claude will check it against our layout rules"); closePlan();
+  } catch(e){ toast("Couldn't set the plan — check your connection"); }
+}
+async function removeAgentFile(id, unitId){
+  const f = ((board && board.files) || []).find(x => x.id === id); if(!f) return;
+  if(!confirm(`Remove "${f.name || "this file"}" from ${AGENT()}'s board? He'll no longer see it either.`)) return;
+  try { await db.doc(`hs_board/${agent.boardToken}/files/${id}`).delete().catch(()=>{}); await db.doc("hs_board/" + agent.boardToken).update({files:FV.arrayRemove(f)}); toast("Removed"); }
+  catch(e){ toast("Couldn't remove — check your connection"); }
+}
 /* "With Andrew": everything he sees for this home — the ask, the conversation, his drop
    suggestion — kept apart from "Our chat", which stays between the two of us. */
 function andrewBox(r){
   if(!agent || !agent.boardToken) return "";
-  if(!onBoard(r.id)) return r.status === "Rejected" || gone(r) ? "" : `<div style="margin:0 0 10px"><button class="btn sm" type="button" data-toboard="${esc(r.id)}">＋ Add to ${esc(AGENT())}'s board</button></div>`;
+  if(!onBoard(r.id)) return r.status === "Rejected" || gone(r) ? "" : `<div style="margin:0 0 10px"><button class="btn sm" type="button" data-toboard="${esc(r.id)}">＋ Add to ${esc(AGENT())}'s board</button></div>${agentFiles(r).length ? `<div class="box"><h4>Files from ${esc(AGENT())}</h4>${agentFilesHTML(r)}</div>` : ""}`;
   const ed = sheet && sheet.askEdit, ask = askOf(r);
   const drop = r.agentDrop && !r.agentDrop.decided && r.status !== "Rejected" ? `<div class="adrop"><b>🗑️ ${esc(AGENT())} suggests dropping this one</b><div style="font-size:13px;margin-top:4px">${esc(r.agentDrop.reason || "")}${r.agentDrop.note ? " — " + esc(r.agentDrop.note) : ""}</div><div class="chips" style="margin-top:8px"><button class="btn sm primary" type="button" data-dropyes="${esc(r.id)}">Drop it</button><button class="btn sm" type="button" data-dropkeep="${esc(r.id)}">Keep it</button></div></div>` : "";
   return `<div class="box withA" id="withA"><h4>With ${esc(AGENT())} <span class="muted" style="font-weight:600;text-transform:none;letter-spacing:0">· he sees all of this</span></h4>
@@ -945,6 +1003,7 @@ function andrewBox(r){
     ${ed ? `<div class="aask"><b>Please check for us</b><textarea id="askIn" maxlength="300" rows="2" style="width:100%;box-sizing:border-box;font:inherit;padding:8px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);margin-top:6px">${esc(ask)}</textarea>
       <div class="chips" style="margin-top:6px"><button class="btn sm primary" type="button" id="askSave">Save</button><button class="btn sm" type="button" id="askCancel">Cancel</button>${typeof r.agentAsk === "string" ? `<button class="btn sm" type="button" id="askReset">Use Claude's suggestion</button>` : ""}</div></div>`
       : `<div class="aask"><span class="grow"><b>Please check for us:</b> ${ask ? esc(ask) : `<span class="muted">nothing right now</span>`}${typeof r.agentAsk === "string" || !ask ? "" : ` <span class="muted" style="font-size:12px">(Claude's suggestion)</span>`}</span><button class="linkbtn" type="button" id="askEdit" aria-label="Edit">✏️ Edit</button></div>`}
+    ${agentFilesHTML(r)}
     <div class="msgs" id="amsgs"></div>
     <form class="addtag" id="aForm" style="margin-top:8px"><input id="aIn" placeholder="Message ${esc(AGENT())}…" maxlength="800" autocomplete="off"><button class="btn primary sm" type="submit">Send</button></form></div>`;
 }
@@ -1278,7 +1337,8 @@ async function applyBoardReplies(){
   if(board){
     const pendingReplies = stable(board.replies || {}) !== stable(board.appliedReplies || {});
     const pendingSugg = (board.suggestions || []).length > (board.appliedSuggestions || 0);
-    if(!pendingReplies && !pendingSugg && Date.now() - lastApplyTry < 120000) return;
+    const pendingFiles = (board.files || []).length > (board.appliedFiles || 0);
+    if(!pendingReplies && !pendingSugg && !pendingFiles && Date.now() - lastApplyTry < 120000) return;
   }
   applyingBoard = true; lastApplyTry = Date.now();
   try {
@@ -1286,7 +1346,7 @@ async function applyBoardReplies(){
     const bdoc = await restCall("GET", bpath); if(!bdoc) return;
     const d = fsDec({mapValue:{fields:bdoc.fields || {}}});
     const R = d.replies || {}, P = d.appliedReplies || {}, sugg = d.suggestions || [], done = d.appliedSuggestions || 0;
-    if(stable(R) === stable(P) && sugg.length <= done) return;
+    if(stable(R) === stable(P) && sugg.length <= done && (d.files || []).length <= (d.appliedFiles || 0)) return;
     const ids = Object.keys(R).filter(id => units.some(z => z.id === id) && stable(R[id]) !== stable(P[id] || {}));
     const now = new Date().toISOString(), writes = [], boardTf = [];
     for(const id of ids){
@@ -1355,7 +1415,14 @@ async function applyBoardReplies(){
       if(sg && sg.url) writes.push({update:{name:`${FS_DOCS()}/hs_meta/act_${randToken(20)}`, fields:fsEnc({kind:"suggest", by:"agent", unitId:"", unitName:"", text:(sg.note ? sg.note + " — " : "") + sg.url, actAt:now}).mapValue.fields}, currentDocument:{exists:false}});
       if(sg && sg.url) writes.push({update:{name:`${FS_DOCS()}/hs_requests/${randToken(20)}`, fields:fsEnc({type:"add", url:sg.url, note:sg.note||"", suggestedBy:AGENT(), by:"agent", status:"queued", createdAt:now}).mapValue.fields}, currentDocument:{exists:false}});
     });
-    const bf = {appliedReplies:R, appliedSuggestions:sugg.length}; if(slotAsk) bf.slotAsk = slotAsk;
+    const files = d.files || [], doneF = d.appliedFiles || 0;
+    files.slice(doneF).forEach(f => {
+      if(!f || !f.id) return;
+      const fu = units.find(z => z.id === f.unitId) || units.find(z => f.forUrl && z.url && z.url.split("#")[0] === f.forUrl.split("#")[0]);
+      writes.push({update:{name:`${FS_DOCS()}/hs_meta/act_${randToken(20)}`, fields:fsEnc({kind:"file", by:"agent", unitId:fu ? fu.id : "", unitName:fu ? fu.name||"" : "", text:(f.name || "a file") + (fu ? "" : " (for a suggested home)"), actAt:now}).mapValue.fields}, currentDocument:{exists:false}});
+      if(fu && !ids.includes(fu.id)) writes.push({update:{name:`${FS_DOCS()}/hs_units/${fu.id}`, fields:fsEnc({updatedAt:now, updateNote:AGENT() + " attached " + (f.name || "a file")}).mapValue.fields}, updateMask:{fieldPaths:["updatedAt","updateNote"]}, currentDocument:{exists:true}});
+    });
+    const bf = {appliedReplies:R, appliedSuggestions:sugg.length, appliedFiles:files.length}; if(slotAsk) bf.slotAsk = slotAsk;
     writes.push({update:{name:bpath, fields:fsEnc(bf).mapValue.fields}, updateMask:{fieldPaths:Object.keys(bf)}, updateTransforms:boardTf, currentDocument:{updateTime:bdoc.updateTime}});
     await restCall("POST", `${FS_DOCS()}:commit`, {writes});
   } catch(e){ console.warn("Board reply not applied yet:", e && e.message); }
@@ -1568,6 +1635,9 @@ document.addEventListener("click", ev => {
     save(u.id, {status:"Rejected", appt:"", rejectReason:`${AGENT()}: ${d.reason || "suggested dropping"}${d.note ? " (" + d.note + ")" : ""}`, "agentDrop.decided":"drop"}, "Dropped — moved to Rejected"); return; }
   if(t.dataset.dropkeep){ save(t.dataset.dropkeep, {"agentDrop.decided":"keep"}, "Kept — " + AGENT() + " will see you'd like to keep it"); return; }
   if(t.dataset.plan){ openPlan(t.dataset.plan); return; }
+  if(t.dataset.afile){ openAgentFile(t.dataset.afile, t.dataset.unit); return; }
+  if(t.dataset.useplan){ useAsPlan(t.dataset.useplan, t.dataset.unit); return; }
+  if(t.dataset.rmfile){ removeAgentFile(t.dataset.rmfile, t.dataset.unit); return; }
   if(t.dataset.planadd){ pickPlan(t.dataset.planadd); return; }
   if(t.dataset.relist){ save(t.dataset.relist, {listingState:"Live"}, "Back in play"); return; }
   if(t.dataset.dupno){ save(t.dataset.dupno, {dupOf:null, dupChecked:true}, "Kept as a different unit"); return; }

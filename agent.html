@@ -72,6 +72,13 @@ textarea{min-height:70px;resize:vertical}
 .reply textarea{flex:1;min-height:40px;margin:0}
 .rsend{border:0;border-radius:10px;background:var(--pandan);color:#fff;font:inherit;font-weight:700;padding:10px 14px;cursor:pointer}
 .linkbtn{background:none;border:0;padding:0;color:var(--pandan);font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;text-align:left}
+.files{margin-top:10px;font-size:13px}
+.fchips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
+.fchip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:4px 8px 4px 4px;font:inherit;font-size:12.5px;color:inherit;cursor:pointer;max-width:100%}
+.fchip img{width:32px;height:32px;object-fit:cover;border-radius:6px}.fico{width:32px;height:32px;display:grid;place-items:center;font-size:18px}
+.fview{position:fixed;inset:0;z-index:50;background:#111;color:#eee;display:flex;flex-direction:column}
+.fbar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 14px;padding-top:max(10px,env(safe-area-inset-top));background:#1c1c1c}
+.fsc{flex:1;overflow:auto;background:#fff;display:flex}.fsc img{max-width:100%;margin:auto}
 .cardfoot{display:flex;gap:16px;margin-top:10px;font-size:13px}.linkbtn.muted{color:var(--muted)}
 .avail summary{cursor:pointer;font-size:14px;line-height:1.45;list-style:none}.avail summary::-webkit-details-marker{display:none}.avail summary::after{content:" ▸";color:var(--muted)}.avail[open] summary::after{content:" ▾"}
 .dropst{margin-top:10px;font-size:13px;background:var(--rose-soft);border-radius:10px;padding:8px 10px}
@@ -203,6 +210,75 @@ call(`${BASE}/hs_board/${token}?key=${FB.apiKey}`).then(async r => {
     : `<h1>Couldn't load</h1><p class="sub">Please check your connection and <a href="" onclick="location.reload();return false">try again</a>. If it keeps happening, open the link in Safari or Chrome.</p>`;
 });
 
+/* Attachments: floor plans and other files from seller agents. Each file is its own small
+   record under this board (images shrunk on the phone, PDFs up to ~700 KB); the board keeps
+   a short list with a tiny thumbnail so cards can show what's been sent. */
+const FILE_MAX = 980000; // chars of data URL (~730 KB)
+const rid = () => Array.from(crypto.getRandomValues(new Uint8Array(12)), b => "abcdefghijklmnopqrstuvwxyz0123456789"[b % 36]).join("");
+function readAs(file){ return new Promise((ok, bad) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.onerror = () => bad(new Error("read")); fr.readAsDataURL(file); }); }
+function drawImg(img, side, q){ const k = Math.min(1, side / Math.max(img.width, img.height)), c = document.createElement("canvas");
+  c.width = Math.max(1, Math.round(img.width * k)); c.height = Math.max(1, Math.round(img.height * k));
+  const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height); return c.toDataURL("image/jpeg", q); }
+function loadImg(src){ return new Promise((ok, bad) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => bad(new Error("not an image")); i.src = src; }); }
+async function prepFile(file){
+  const name = (file.name || "file").slice(0, 120);
+  if(file.type === "application/pdf"){
+    const d = await readAs(file); if(d.length > FILE_MAX) throw new Error("too big");
+    return {name, type:"application/pdf", dataUrl:d, thumb:"", size:file.size};
+  }
+  if(!/^image\//.test(file.type)) throw new Error("type");
+  const img = await loadImg(URL.createObjectURL(file));
+  let out = "";
+  for(const [side, q] of [[2000,.82],[1800,.75],[1600,.7],[1400,.65],[1200,.6],[1000,.55],[800,.5]]){ out = drawImg(img, side, q); if(out.length < FILE_MAX) break; }
+  if(out.length >= FILE_MAX) throw new Error("too big");
+  return {name:/\.(jpe?g|png|heic|webp)$/i.test(name) ? name : name + ".jpg", type:"image/jpeg", dataUrl:out, thumb:drawImg(img, 96, .5), size:Math.round(out.length * 0.75)};
+}
+const attachState = {}; // unitId -> "busy" | "ok" | error text
+async function attachFile(unitId, forUrl, file, kind){
+  const key = unitId || "suggest";
+  attachState[key] = "busy"; rerender();
+  if(PREVIEW){ attachState[key] = "Preview only — not sent."; rerender(); return; }
+  try {
+    const f = await prepFile(file), id = rid(), at = new Date().toISOString();
+    const meta = {id, unitId:unitId || "", forUrl:forUrl || "", name:f.name, type:f.type, kind, at, size:f.size, thumb:f.thumb};
+    const doc = {unitId:unitId || "", forUrl:forUrl || "", name:f.name, type:f.type, dataUrl:f.dataUrl, by:"agent", size:f.size, kind};
+    const body = {writes:[
+      {update:{name:`${DOC}/files/${id}`, fields:Object.fromEntries(Object.entries(doc).map(([k, v]) => [k, enc(v)]))}, updateTransforms:[{fieldPath:"at", setToServerValue:"REQUEST_TIME"}], currentDocument:{exists:false}},
+      {update:{name:DOC, fields:{}}, updateMask:{fieldPaths:[]}, updateTransforms:[{fieldPath:"files", appendMissingElements:{values:[enc(meta)]}}, {fieldPath:"replyAt", setToServerValue:"REQUEST_TIME"}], currentDocument:{exists:true}}]};
+    const r = await call(`${BASE}:commit?key=${FB.apiKey}`, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
+    if(!r.ok) throw new Error("http " + r.status);
+    B.files = (B.files || []).concat([meta]); attachState[key] = "ok";
+  } catch(e){
+    attachState[key] = e.message === "too big" ? "That file is too large (max ~700 KB). A photo or screenshot of the plan works best." : e.message === "type" || e.message === "not an image" ? "Please choose a photo, screenshot or PDF." : "Couldn't upload — check your connection and try again.";
+  }
+  rerender();
+}
+function pickFile(unitId, forUrl, kind){
+  const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*,application/pdf";
+  inp.onchange = () => { const f = inp.files && inp.files[0]; if(f) attachFile(unitId, forUrl, f, kind); };
+  inp.click();
+}
+async function openFile(id){
+  const m = (B.files || []).find(f => f.id === id); if(!m) return;
+  try {
+    const r = await call(`${BASE}/hs_board/${token}/files/${id}?key=${FB.apiKey}`); if(!r.ok) throw new Error("http");
+    const d = dec({mapValue:{fields:(await r.json()).fields || {}}});
+    if(d.type === "application/pdf"){ const a = document.createElement("a"); a.href = d.dataUrl; a.download = d.name || "file.pdf"; a.target = "_blank"; document.body.appendChild(a); a.click(); a.remove(); return; }
+    const v = document.createElement("div"); v.className = "fview"; v.innerHTML = `<div class="fbar"><b>${esc(d.name || "")}</b><button class="opt" type="button" id="fvClose">Close</button></div><div class="fsc"><img src="${esc(d.dataUrl)}" alt=""></div>`;
+    document.body.appendChild(v); $("fvClose").onclick = () => v.remove();
+  } catch(e){ alert("Couldn't open that file — check your connection."); }
+}
+function filesHTML(unitId, forUrl, kind){
+  const key = unitId || "suggest", list = (B.files || []).filter(f => unitId ? f.unitId === unitId : (f.forUrl && f.forUrl === forUrl)), st = attachState[key];
+  const chips = list.map(f => `<button class="fchip" type="button" data-file="${esc(f.id)}">${f.thumb ? `<img src="${esc(f.thumb)}" alt="">` : `<span class="fico">📄</span>`}<span>${esc((f.name || "file").slice(0, 28))}</span><span class="meta">✓ sent</span></button>`).join("");
+  const btn = st === "busy" ? `<span class="meta">⏳ Uploading…</span>` : `<button class="linkbtn" type="button" data-attach="${esc(unitId)}" data-url="${esc(forUrl || "")}" data-kind="${esc(kind)}">📎 ${list.length ? "Attach another" : "Attach floor plan or file"}</button>`;
+  const note = st && st !== "busy" && st !== "ok" ? `<div class="err" style="font-size:12.5px;margin-top:4px">${esc(st)}</div>` : "";
+  if(kind === "plan") return `<div class="files">${chips ? `<div class="fchips">${chips}</div>` : ""}${st === "busy" ? `<span class="meta">⏳ Uploading…</span>` : ""}${note}</div>`;
+  return `<div class="files">${chips ? `<div class="fchips">${chips}</div>` : ""}${btn}${note}</div>`;
+}
+const attachLink = (id, it) => attachState[id] === "busy" ? "" : `<button class="linkbtn" type="button" data-attach="${esc(id)}" data-url="" data-kind="plan">📎 ${(B.files||[]).some(f => f.unitId === id) ? "Attach another" : "Attach floor plan"}</button>`;
+const rerender = () => { const y = scrollY; render(); scrollTo(0, y); };
+
 const isChanged = it => it.changedAt && Date.parse(it.changedAt) > lastSeen;
 const PR = {top:0, interested:1, low:2};
 const prRank = it => (PR[it.priority] ?? 1) * 100 + (it.rank || 99);
@@ -233,7 +309,7 @@ function dropHTML(id, it){
   if(ui) return kept + `<div class="dropui"><b>Why drop it?</b><div class="rs">${DROP_REASONS.map(r => `<button class="opt" type="button" data-dreason="${esc(id)}" data-r="${esc(r)}" aria-pressed="${ui.reason === r}">${esc(r)}</button>`).join("")}</div>
     <input data-dnote="${esc(id)}" maxlength="160" placeholder="Details (optional), e.g. it's really 2BR + study" value="${esc(ui.note)}">
     <div class="rs"><button class="send" type="button" data-dgo="${esc(id)}" ${ui.reason ? "" : "disabled"}>Drop it</button><button class="opt" type="button" data-dcancel="${esc(id)}">Cancel</button></div></div>`;
-  return kept + `<div class="cardfoot">${cmt}<button class="linkbtn muted" type="button" data-drop="${esc(id)}">🗑️ Drop</button></div>`;
+  return kept + `<div class="cardfoot">${cmt}${attachLink(id, it)}<button class="linkbtn muted" type="button" data-drop="${esc(id)}">🗑️ Drop</button></div>`;
 }
 function card(id, it){
   const st = state[id], ch = isChanged(it), live = it.status !== "closed";
@@ -249,7 +325,8 @@ function card(id, it){
     ${live && it.ask ? `<div class="ask"><b>Please check for us:</b> ${esc(it.ask)}</div>` : ""}
     ${threadHTML(id, it)}
     ${live ? replyBox(id, it) : ""}
-    ${live && it.status !== "offer" ? dropHTML(id, it) : ""}
+    ${live ? filesHTML(id, "", "plan") : ""}
+    ${live && it.status !== "offer" ? dropHTML(id, it) : `<div class="cardfoot">${attachLink(id, it)}</div>`}
   </div>`;
 }
 function offerBlock(id, it){
@@ -264,7 +341,7 @@ function render(){
   const items = Object.entries(B.items || {});
   const changed = items.filter(([, it]) => isChanged(it) || newFrom(it).length);
   const from = B.from || "Adrian";
-  let h = `<h1>Hi ${esc(B.agentName || "")} 👋</h1><p class="sub">${esc(from)} &amp; Shernice's viewing board — everything you change saves by itself.</p>`;
+  let h = `<h1>Hi ${esc(B.agentName || "")} 👋</h1><p class="sub">${esc(from)} &amp; Shernice's viewing board — everything you change saves by itself. Got a floor plan from the seller's agent? Tap 📎 on that home and it goes straight to them.</p>`;
   if(lastSeen && changed.length) h += `<div class="news"><b>Since your last visit</b><ul>${changed.map(([id, it]) => `<li><a href="#h-${esc(id)}" data-jump="${esc(id)}">${esc(it.name)}</a>: ${esc([isChanged(it) ? it.changeNote || "updated" : "", ...newFrom(it).map(m => `${m.name || "They"}: “${m.text.slice(0,90)}${m.text.length > 90 ? "…" : ""}”`)].filter(Boolean).join(" · "))}</li>`).join("")}</ul></div>`;
   const tom = items.filter(([, it]) => it.priority === "top" && it.status !== "closed").sort((a,b) => (a[1].rank||99) - (b[1].rank||99));
   if(tom.length) h += `<div class="box"><h4>What's top of mind for us now</h4><p class="meta" style="margin:0 0 4px">This changes as we view homes and find new ones.</p><ol class="tom" style="margin:4px 0 0;padding-left:20px">${tom.map(([id, it]) => `<li><a href="#h-${esc(id)}" data-jump="${esc(id)}"><b>${esc(it.name)}</b></a>${it.status==="upcoming"&&it.appt?` · ${esc(fmtWhen(it.appt))}`:it.status==="new"?" · needs a viewing time":""}</li>`).join("")}</ol></div>`;
@@ -279,6 +356,7 @@ function render(){
   h += `<h2 class="sec">Suggest a home <small>a unit you think suits them</small></h2>
     <div class="box"><label>Listing link<input id="sgUrl" type="url" inputmode="url" placeholder="https://www.propertyguru.com.sg/listing/…" value="${esc(suggestDraft.url)}"></label>
     <label>Why it suits them (optional)<input id="sgNote" maxlength="200" value="${esc(suggestDraft.note)}"></label>
+    <div style="margin-top:8px">${filesHTML("", suggestDraft.url.trim(), "suggest")}</div>
     <button class="send" type="button" id="sgSend" style="margin-top:10px;width:100%">Send suggestion</button><div id="sgMsg" style="font-size:13px;margin-top:6px"></div>
     ${(B.suggestions||[]).filter(x => x.url).length ? `<div class="meta" style="margin-top:8px">Already suggested: ${B.suggestions.filter(x => x.url).map(s => esc((s.url||"").replace(/^https?:\/\/(www\.)?/,"").slice(0,40))).join(", ")}</div>` : ""}</div>
     <h2 class="sec">Note for them <small>optional</small></h2><div class="box"><textarea id="note" maxlength="800" placeholder="Anything else">${esc(B.agentNote||"")}</textarea></div>`;
@@ -289,6 +367,8 @@ function render(){
   const typing = (el, fn) => { el.oninput = () => { fn(el.value); touch(4000); }; el.onblur = () => { if(dirty) touch(200); }; };
   root.querySelectorAll("[data-view]").forEach(t => typing(t, v => { state[t.dataset.view].view = v; }));
   const rer = () => { const y = scrollY; render(); scrollTo(0, y); };
+  root.querySelectorAll("[data-attach]").forEach(b => b.onclick = () => { if(!b.dataset.attach && !b.dataset.url){ $("sgMsg").innerHTML = `<span class="err">Paste the listing link first, then attach.</span>`; return; } pickFile(b.dataset.attach, b.dataset.url, b.dataset.kind); });
+  root.querySelectorAll("[data-file]").forEach(b => b.onclick = () => openFile(b.dataset.file));
   root.querySelectorAll("[data-thopen]").forEach(b => b.onclick = () => { threadOpen.add(b.dataset.thopen); rer(); });
   root.querySelectorAll("[data-draft]").forEach(t => t.oninput = () => { state[t.dataset.draft].draft = t.value; });
   root.querySelectorAll("[data-rsend]").forEach(b => b.onclick = () => { if(sendDraft(b.dataset.rsend)){ touch(200); rer(); } });
@@ -303,7 +383,7 @@ function render(){
   root.querySelectorAll("[data-openview]").forEach(b => b.onclick = () => { const id = b.dataset.openview; viewOpen.add(id); const y = scrollY; render(); scrollTo(0, y); const t = root.querySelector(`[data-draft="${CSS.escape(id)}"]`); if(t) t.focus({preventScroll:true}); });
   root.querySelectorAll("[data-counter]").forEach(t => typing(t, v => { const id = t.dataset.counter; state[id].counter = Object.assign({}, state[id].counter, {amountM: parseMoney(v)}); }));
   root.querySelectorAll("[data-cnote]").forEach(t => typing(t, v => { const id = t.dataset.cnote; state[id].counter = Object.assign({}, state[id].counter, {note: v}); }));
-  ["sgUrl","sgNote"].forEach(k => { $(k).oninput = () => { suggestDraft[k === "sgUrl" ? "url" : "note"] = $(k).value; $("sgMsg").textContent = ""; }; });
+  ["sgUrl","sgNote"].forEach(k => { $(k).oninput = () => { suggestDraft[k === "sgUrl" ? "url" : "note"] = $(k).value; $("sgMsg").textContent = ""; const a = root.querySelector('[data-attach=""]'); if(a) a.dataset.url = suggestDraft.url.trim(); }; });
   $("sgSend").onclick = sendSuggestion;
   typing($("note"), v => { B.agentNote = v; });
   wireSlots();

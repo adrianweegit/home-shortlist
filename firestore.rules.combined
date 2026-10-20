@@ -238,10 +238,30 @@ service cloud.firestore {
       allow update: if token.size() >= 24
         && resource.data.active == true
         && request.resource.data.diff(resource.data).affectedKeys()
-             .hasOnly(['replies', 'agentNote', 'suggestions', 'replyAt', 'agentSeenAt'])
+             .hasOnly(['replies', 'agentNote', 'suggestions', 'replyAt', 'agentSeenAt', 'files'])
         && request.resource.data.replies is map
         && request.resource.data.suggestions is list
-        && request.resource.data.suggestions.size() <= 50;
+        && request.resource.data.suggestions.size() <= 50
+        && (!('files' in request.resource.data) || (request.resource.data.files is list && request.resource.data.files.size() <= 80));
+
+      // Files the agent attaches to a home (floor plans from seller agents).
+      // One small record per file, under the board only. Images are shrunk on
+      // his phone; the cap keeps each record well under Firestore's 1 MB limit.
+      // He can add and list them, never change or delete; the app can do both.
+      match /files/{fileId} {
+        allow read, write: if hsUser();
+        allow read: if token.size() >= 24
+          && get(/databases/$(database)/documents/hs_board/$(token)).data.active == true;
+        allow create: if token.size() >= 24
+          && get(/databases/$(database)/documents/hs_board/$(token)).data.active == true
+          && request.resource.data.keys().hasOnly(['unitId', 'forUrl', 'name', 'type', 'dataUrl', 'by', 'at', 'size', 'kind'])
+          && request.resource.data.by == 'agent'
+          && request.resource.data.unitId is string && request.resource.data.unitId.size() <= 80
+          && request.resource.data.name is string && request.resource.data.name.size() <= 120
+          && request.resource.data.type in ['image/jpeg', 'image/png', 'application/pdf']
+          && request.resource.data.dataUrl is string && request.resource.data.dataUrl.size() <= 980000
+          && request.resource.data.at == request.time;
+      }
     }
 
     match /hs_agent/{token} {

@@ -119,6 +119,17 @@ about 600 m (≈8-min walk) of an MRT station**, accept **70 years or more**.
 Note the lease under `concerns` when it is below 80 (e.g. "Lease ~73 yrs").
 All other rules (budget, school runs, size, 6 km) still apply.
 
+## Files Andrew attaches on his board (20 Oct 2026)
+Andrew can attach floor plans (JPEG/PNG or PDF) to homes on his board. The board doc
+`hs_board/<token>` (token in `hs_meta/agent.boardToken`) has a `files` list with
+`{id, unitId, forUrl, name, type, kind, at}`; the file itself is `hs_board/<token>/files/<id>`
+(`dataUrl`). When a unit has such a file and no `planDoc` yet, and the file looks like a floor
+plan, read it (render page 1 of a PDF), apply layout rules 1–3, update concerns and re-rate —
+but do NOT set `planDoc` yourself (Adrian or Shernice tap "Use as floor plan" in the app).
+`planDoc.pdf: true` means the stored plan in `hs_meta/plan_<unitId>` is in field `pdf`
+(a PDF data URL) instead of `dataUrl`. A file whose `forUrl` matches a unit's `url` belongs
+to that unit. Never change or delete the `files` list or the file docs.
+
 ## Floor plans we add ourselves (19 Oct 2026)
 A unit with `planDoc: {at, by}` has a floor plan Adrian or Shernice uploaded; the image
 is in `hs_meta/plan_<unitId>` (field `dataUrl`, a JPEG data URL). It takes priority over
