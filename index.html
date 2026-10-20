@@ -461,7 +461,7 @@ async function save(id, data, okMsg){
 }
 
 /* ---------- App version: tell them when a newer one is published ---------- */
-const APP_VERSION = "2026-10-20T13:49+08:00"; // bump on every publish
+const APP_VERSION = "2026-10-20T14:55+08:00"; // bump on every publish
 let swReg = null, lastUpdCheck = 0, newVersion = false;
 async function checkForUpdate(force){
   if(newVersion || (!force && Date.now() - lastUpdCheck < 60000)) return;
@@ -1030,9 +1030,15 @@ function renderMsgs(){
   const sc = $("sheetScroll"); if(sc && renderMsgs._stick) sc.scrollTop = sc.scrollHeight;
   if(sheet && sheet.toChat && comments.length){ sheet.toChat = false; const lastC = comments[comments.length-1], box = (ae && (lastC.by === "agent" || lastC.shared)) ? ae.closest(".box") : el.closest(".box"); if(box && sc) sc.scrollTop = box.offsetTop - 8; }
 }
+/* Don't rebuild the details page while a field in it is being edited (a background update
+   would otherwise reset the date picker or a half-typed box); redraw once the field is left. */
+let sheetDirty = false;
+function editingInSheet(){ const a = document.activeElement; return !!(a && a.closest && a.closest("#sheetBody") && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)); }
+document.addEventListener("focusout", ev => { if(sheetDirty && ev.target && ev.target.closest && ev.target.closest("#sheetBody")) setTimeout(() => { if(sheetDirty && !editingInSheet()){ sheetDirty = false; if(sheet && sheet.type === "unit") keepScroll(renderSheet); } }, 150); });
 function renderSheet(fresh){
   const root = $("sheetRoot");
   if(!sheet){ root.innerHTML = ""; return; }
+  if(!fresh && sheet.type === "unit" && editingInSheet()){ sheetDirty = true; return; }
   if(sheet.type === "add") return renderAddSheet(fresh);
   if(sheet.type === "ask") return renderAskSheet();
   if(sheet.type === "reply") return renderReplySheet();
