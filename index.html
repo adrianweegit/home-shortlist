@@ -160,6 +160,9 @@ h2.sec small{font:500 13px var(--f-body);color:var(--muted)}
 .aask{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;font-size:13.5px;background:var(--kaya-soft);border-radius:10px;padding:8px 10px;margin-bottom:8px}
 .aask .grow{flex:1;min-width:0}
 .adrop{background:var(--kaya-soft);border-radius:10px;padding:8px 10px;margin-bottom:8px}
+.bline{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:4px 0}
+.btag{font-weight:700;color:var(--pandan);background:var(--pandan-soft);border-radius:999px;padding:1px 8px}
+.bnew{font-weight:700;color:var(--pandan)}
 .fold summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}.fold summary::-webkit-details-marker{display:none}
 .fold summary h4{margin:0;flex:0 0 auto}.fold summary .sum{flex:1;min-width:0;display:flex;gap:6px;flex-wrap:wrap;font-size:12px;overflow:hidden}
 .fold summary .sum .trip{padding:2px 8px;font-size:12px;white-space:nowrap}.fold summary .sum.muted{color:var(--muted);white-space:nowrap;text-overflow:ellipsis;display:block}
@@ -453,14 +456,14 @@ async function save(id, data, okMsg){
 }
 
 /* ---------- App version: tell them when a newer one is published ---------- */
-const APP_VERSION = "2026-10-20T01:05+08:00"; // bump on every publish
+const APP_VERSION = "2026-10-20T08:11+08:00"; // bump on every publish
 let swReg = null, lastUpdCheck = 0, newVersion = false;
 async function checkForUpdate(force){
   if(newVersion || (!force && Date.now() - lastUpdCheck < 60000)) return;
   lastUpdCheck = Date.now();
   try { if(swReg) swReg.update().catch(()=>{});
     const t = await (await fetch("index.html?v=" + Date.now(), {cache:"no-store"})).text();
-    const m = t.match(/const APP_VERSION = "([^"]+)"/);
+    const m = t.match(/APP_VERSION = "([^"]+)";/);
     if(m && m[1] !== APP_VERSION){ newVersion = true; showUpdateBar(); }
     else if(force) toast("You're on the latest version");
   } catch(e){ if(force) toast("Couldn't check — no connection?"); }
@@ -549,7 +552,8 @@ function card(r){
     ${dupBanner(r)}
     <div class="hero">${r.photoUrl ? `<div class="pic ${k}">${pic(k)}</div>` : devTile(r)}<div class="ttl">
       <h3>${esc(r.name)}</h3><div class="sub">${esc(r.area||"")}</div>${r.isNew && !isNewFor(r,me.key) && isNewFor(r,partnerOf(me.key)) && r.status!=="Rejected" ? `<div class="hint">👀 ${esc(NAME[partnerOf(me.key)])} hasn't looked yet</div>` : ""}${updatedFor(r,me.key)&&r.updateNote?`<div class="hint upd">↻ ${esc(r.updateNote)}</div>`:""}
-      <div class="row"><span class="dist">${typeof r.distKm==="number"?(r.distEst?"≈":"")+r.distKm.toFixed(r.distKm<1?2:1)+" km":"—"} from Kovan</span><span class="pill st-${st}">${esc(STATUS_LABEL[st])}</span>${isNewFor(r,me.key)?`<span class="pill new">New</span>`:updatedFor(r,me.key)?`<span class="pill upd" title="${esc(r.updateNote||"")}">Updated</span>`:""}${r.listingState&&r.listingState!=="Live"?`<span class="pill st-Booked">${esc(r.listingState)}</span>`:""}${r.agentDrop&&!r.agentDrop.decided&&r.status!=="Rejected"?`<span class="pill st-Booked">${esc(AGENT())}: drop?</span>`:""}</div>
+      ${boardLine(r)}
+      <div class="row"><span class="dist">${typeof r.distKm==="number"?(r.distEst?"≈":"")+r.distKm.toFixed(r.distKm<1?2:1)+" km":"—"} from Kovan</span><span class="pill st-${st}">${esc(STATUS_LABEL[st])}</span>${isNewFor(r,me.key)?`<span class="pill new">New</span>`:updatedFor(r,me.key)?`<span class="pill upd" title="${esc(r.updateNote||"")}">Updated</span>`:""}${r.listingState&&r.listingState!=="Live"?`<span class="pill st-Booked">${esc(r.listingState)}</span>`:""}</div>
     </div></div>
     <div class="body">
       <div class="money"><span class="ask ${r.askingM>budgetOf(r)?"over":""}">${esc(money(r.askingM))}</span><span class="fair">fair ${esc(fairTxt(r))}</span></div>
@@ -719,6 +723,7 @@ const FILTERS = [
   ["budget","Within budget", u => inPlay(u) && typeof u.askingM === "number" && u.askingM <= budgetOf(u)],
   ["new","New for me", u => (isNewFor(u, me.key) || updatedFor(u, me.key)) && inPlay(u)],
   ["mine","Not rated by me", u => inPlay(u) && !ratingOf(u, me.key) && !noped(u, me.key)],
+  ["board",null, u => onBoard(u.id) && inPlay(u)], // label filled in at render: "With Andrew"
   ["booked","Booked", u => u.status === "Booked"],
   ["viewed","Viewed", u => u.status === "Viewed" || u.status === "Offer"],
   ["rejected","Rejected / sold", u => !inPlay(u)],
@@ -728,12 +733,14 @@ function homesFiltered(){
   const fn = (FILTERS.find(f => f[0] === filter) || FILTERS[0])[2];
   const sorters = {dist:(a,b)=>(a.distKm??99)-(b.distKm??99), hearts:(a,b)=>score(b)-score(a)||(a.distKm??99)-(b.distKm??99), price:(a,b)=>(a.askingM??99)-(b.askingM??99), value:(a,b)=>((a.askingM??99)-(a.fairHighM??a.askingM??99))-((b.askingM??99)-(b.fairHighM??b.askingM??99)), school:(a,b)=>tripScore(a)-tripScore(b)||(a.distKm??99)-(b.distKm??99), claude:(a,b)=>((b.claude&&b.claude.n)||0)-((a.claude&&a.claude.n)||0)||(ratingOf(a,me.key)?1:0)-(ratingOf(b,me.key)?1:0)||(a.distKm??99)-(b.distKm??99)};
   const q = query.trim().toLowerCase();
-  return (q ? units.filter(u => [u.name,u.area,u.mrt,u.format].join(" ").toLowerCase().includes(q)) : units.filter(fn)).sort(sorters[sort] || sorters.dist);
+  const out = (q ? units.filter(u => [u.name,u.area,u.mrt,u.format].join(" ").toLowerCase().includes(q)) : units.filter(fn)).sort(sorters[sort] || sorters.dist);
+  if(!q && filter === "board"){ const ORD = {new:0, upcoming:1, offer:2, viewed:3, closed:4}; return out.sort((a,b) => (ORD[deriveItem(a).status] ?? 9) - (ORD[deriveItem(b).status] ?? 9)); }
+  return out;
 }
 function viewHomes(){
   const list = homesFiltered(), q = query.trim();
   return `<input class="search" id="q" type="search" placeholder="Search by name, area or MRT" value="${esc(query)}" autocomplete="off" enterkeyhint="search" style="margin-bottom:10px">
-    <div class="tool"><div class="scrollx">${FILTERS.map(([k,l,f]) => `<button class="chip f" type="button" data-filter="${k}" aria-pressed="${filter===k}">${esc(l)} ${units.filter(f).length}</button>`).join("")}</div>
+    <div class="tool"><div class="scrollx">${FILTERS.map(([k,l,f]) => `<button class="chip f" type="button" data-filter="${k}" aria-pressed="${filter===k}">${esc(l || "🤝 With " + AGENT())} ${units.filter(f).length}</button>`).join("")}</div>
     <label style="font-size:13px;color:var(--muted)">Sort <select id="sort"><option value="dist" ${sort==="dist"?"selected":""}>Closest to Kovan</option><option value="hearts" ${sort==="hearts"?"selected":""}>Most hearts</option><option value="price" ${sort==="price"?"selected":""}>Lowest price</option><option value="value" ${sort==="value"?"selected":""}>Best vs fair value</option><option value="school" ${sort==="school"?"selected":""}>Easiest school runs</option><option value="claude" ${sort==="claude"?"selected":""}>Claude's picks</option></select></label></div>
     <div id="homeList">${homeList(list, q)}</div>`;
 }
@@ -757,6 +764,20 @@ function viewCompare(){
 }
 
 
+/* Where a home stands on Andrew's board, for its card. */
+function boardLine(r){
+  if(!onBoard(r.id) || !inPlay(r)) return "";
+  const it = board.items[r.id] || {}, rep = (board.replies || {})[r.id] || {}, d = deriveItem(r);
+  const fresh = (it.thread || []).filter(m => m.by === "agent" && Date.parse(m.at) > (seenAt(r, me.key) || "")).length;
+  let st = "";
+  if(r.agentDrop && !r.agentDrop.decided) st = "🗑️ Suggests dropping";
+  else if(d.status === "upcoming") st = "✅ " + fmtWhen(d.appt);
+  else if(d.status === "viewed") st = "👀 Viewed";
+  else if(d.status === "offer") st = "💰 Offer stage";
+  else if(rep.state === "sold") st = "🏷️ Says sold";
+  else st = "⏳ Checking";
+  return `<div class="bline"><span class="btag">🤝 ${esc(AGENT())}</span><span>${esc(st)}</span>${fresh ? `<span class="bnew">💬 ${fresh} new</span>` : ""}</div>`;
+}
 /* ---------- Floor plans ----------
    A plan either comes from the listing (floorPlanUrl) or was added by one of us: the
    image is shrunk on the phone and kept in Firestore (hs_meta/plan_<unitId>), with
