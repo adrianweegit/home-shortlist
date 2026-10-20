@@ -461,7 +461,7 @@ async function save(id, data, okMsg){
 }
 
 /* ---------- App version: tell them when a newer one is published ---------- */
-const APP_VERSION = "2026-10-20T13:33+08:00"; // bump on every publish
+const APP_VERSION = "2026-10-20T13:49+08:00"; // bump on every publish
 let swReg = null, lastUpdCheck = 0, newVersion = false;
 async function checkForUpdate(force){
   if(newVersion || (!force && Date.now() - lastUpdCheck < 60000)) return;
@@ -725,10 +725,10 @@ function viewViewings(){
 }
 const FILTERS = [
   ["active","In play", inPlay],
+  ["board",null, u => onBoard(u.id) && inPlay(u)], // label filled in at render: "With Andrew"
   ["budget","Within budget", u => inPlay(u) && typeof u.askingM === "number" && u.askingM <= budgetOf(u)],
   ["new","New for me", u => (isNewFor(u, me.key) || updatedFor(u, me.key)) && inPlay(u)],
   ["mine","Not rated by me", u => inPlay(u) && !ratingOf(u, me.key) && !noped(u, me.key)],
-  ["board",null, u => onBoard(u.id) && inPlay(u)], // label filled in at render: "With Andrew"
   ["booked","Booked", u => u.status === "Booked"],
   ["viewed","Viewed", u => u.status === "Viewed" || u.status === "Offer"],
   ["rejected","Rejected / sold", u => !inPlay(u)],
@@ -739,14 +739,15 @@ function homesFiltered(){
   const sorters = {dist:(a,b)=>(a.distKm??99)-(b.distKm??99), hearts:(a,b)=>score(b)-score(a)||(a.distKm??99)-(b.distKm??99), price:(a,b)=>(a.askingM??99)-(b.askingM??99), value:(a,b)=>((a.askingM??99)-(a.fairHighM??a.askingM??99))-((b.askingM??99)-(b.fairHighM??b.askingM??99)), school:(a,b)=>tripScore(a)-tripScore(b)||(a.distKm??99)-(b.distKm??99), claude:(a,b)=>((b.claude&&b.claude.n)||0)-((a.claude&&a.claude.n)||0)||(ratingOf(a,me.key)?1:0)-(ratingOf(b,me.key)?1:0)||(a.distKm??99)-(b.distKm??99)};
   const q = query.trim().toLowerCase();
   const out = (q ? units.filter(u => [u.name,u.area,u.mrt,u.format].join(" ").toLowerCase().includes(q)) : units.filter(fn)).sort(sorters[sort] || sorters.dist);
-  if(!q && filter === "board"){ const ORD = {new:0, upcoming:1, offer:2, viewed:3, closed:4}; return out.sort((a,b) => (ORD[deriveItem(a).status] ?? 9) - (ORD[deriveItem(b).status] ?? 9)); }
+  const ORD = {new:0, upcoming:1, offer:2, viewed:3, closed:4}, stage = u => onBoard(u.id) ? (ORD[deriveItem(u).status] ?? 9) : 10;
+  if(sort === "board" || (!q && filter === "board")) return out.sort((a,b) => stage(a) - stage(b) || score(b) - score(a));
   return out;
 }
 function viewHomes(){
   const list = homesFiltered(), q = query.trim();
   return `<input class="search" id="q" type="search" placeholder="Search by name, area or MRT" value="${esc(query)}" autocomplete="off" enterkeyhint="search" style="margin-bottom:10px">
     <div class="tool"><div class="scrollx">${FILTERS.map(([k,l,f]) => `<button class="chip f" type="button" data-filter="${k}" aria-pressed="${filter===k}">${esc(l || "🤝 With " + AGENT())} ${units.filter(f).length}</button>`).join("")}</div>
-    <label style="font-size:13px;color:var(--muted)">Sort <select id="sort"><option value="dist" ${sort==="dist"?"selected":""}>Closest to Kovan</option><option value="hearts" ${sort==="hearts"?"selected":""}>Most hearts</option><option value="price" ${sort==="price"?"selected":""}>Lowest price</option><option value="value" ${sort==="value"?"selected":""}>Best vs fair value</option><option value="school" ${sort==="school"?"selected":""}>Easiest school runs</option><option value="claude" ${sort==="claude"?"selected":""}>Claude's picks</option></select></label></div>
+    <label style="font-size:13px;color:var(--muted)">Sort <select id="sort"><option value="dist" ${sort==="dist"?"selected":""}>Closest to Kovan</option><option value="hearts" ${sort==="hearts"?"selected":""}>Most hearts</option><option value="price" ${sort==="price"?"selected":""}>Lowest price</option><option value="value" ${sort==="value"?"selected":""}>Best vs fair value</option><option value="school" ${sort==="school"?"selected":""}>Easiest school runs</option><option value="claude" ${sort==="claude"?"selected":""}>Claude's picks</option><option value="board" ${sort==="board"?"selected":""}>On ${esc(AGENT())}'s board first</option></select></label></div>
     <div id="homeList">${homeList(list, q)}</div>`;
 }
 function homeList(list, q){
