@@ -56,6 +56,13 @@ logistics. Always add them, tag the school run under `concerns` (e.g. "School
 runs hard (PLMGS ~59 min)"), and don't push back or recommend against them in
 notes. Agent suggestions follow the same rule as pasted links.
 
+## Homes where Adrian will drive Kaylie (20 Oct 2026)
+Units with `driveSchool: true` (Grande Vista, the Cabana terraces, Alana) are ones Adrian
+has decided he'd drive Kaylie to PLMGS from every day. For these, do NOT cap `claude.n`
+at 2 for a hard school run and don't add a "School runs hard" concern; keep the concern
+"Drive Kaylie to PLMGS daily (decided)" instead, and note the driving distance in `notes`.
+Never set `driveSchool` yourself — only Adrian decides that.
+
 ## Layout rules from our viewings (18 Oct 2026)
 After viewing The Minton, Riverfront and Stars of Kovan, every home must also
 pass these. Check them on the floor plan. For rescans, skip homes that fail;
