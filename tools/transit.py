@@ -103,7 +103,11 @@ def bus_legs(origin_stops, dest_stops):
 
 def name(stop): return stops[stop][2] if stop in stops else stop
 
-def trips(origin, dest, dest_label, dest_is_station=None):
+SHUTTLE_MIN = 10  # wait + ride on a condo shuttle to its MRT (runs to a timetable)
+
+def trips(origin, dest, dest_label, dest_is_station=None, shuttle=None):
+    """shuttle: {"to": <station name in STN>, "verified": bool} — a condo shuttle bus to the MRT.
+    A verified shuttle replaces the first leg; an unverified one is only reported under withShuttle."""
     opts = []
     w = walk_min(origin, dest)
     if w <= 18: opts.append(dict(min=w, xfers=0, walk=w, desc=f"Walk {round(w)} min", mode="walk"))
@@ -149,6 +153,8 @@ def trips(origin, dest, dest_label, dest_is_station=None):
                          desc=f"{desc_in} → {line_txt} {s1} to {s2} ({n} stop{"s" if n != 1 else ""})" + (f" → {desc_out}" if desc_out else "")))
     ins = [(s, t, f"Walk {round(t)} min to {s} ({'/'.join(STN[s]['codes'])})", t, 0) for s, t in o_stn] + \
           [(s, t, d, wk, 1) for s, t, d, wk in feeder]
+    sh = shuttle and shuttle.get("to") in STN and shuttle.get("to")
+    if sh: ins.append((sh, SHUTTLE_MIN, f"Condo shuttle to {sh} ({'/'.join(STN[sh]['codes'])})", 2, 0))
     outs = [(s, t, (f"walk {round(t)} min" if t > 0.5 else ""), t, 0) for s, t, _ in d_stn] + \
            [(s, t, d, wk, 1) for s, t, d, wk in egress]
     for s1, t1, d1, w1, x1 in ins:
@@ -163,16 +169,28 @@ def trips(origin, dest, dest_label, dest_is_station=None):
     else:
       rating = "easy" if (m <= 25 and x == 0 and wk <= 10) or (m <= 22 and x <= 1 and wk <= 8) else \
                "hard" if (m > 40 or x >= 2 or wk > 15) else "ok"
-    return dict(min=round(m), xfers=x, walk=round(wk), rating=rating, route=best["desc"],
-                mode=best["mode"], nel=bool(best.get("nel")) )
+    out = dict(min=round(m), xfers=x, walk=round(wk), rating=rating, route=best["desc"],
+               mode=best["mode"], nel=bool(best.get("nel")), shuttle=bool(sh and best["desc"].startswith("Condo shuttle")))
+    return out
 
 
-def for_point(lat, lng, places):
+def for_point(lat, lng, places, shuttle=None):
     o = (lat, lng)
-    return {p["key"]: trips(o, (p["lat"], p["lng"]), p["label"], dest_is_station=p.get("station")) for p in places}
+    out = {}
+    for p in places:
+        d = (p["lat"], p["lng"]); st = p.get("station")
+        if shuttle and shuttle.get("to") and not shuttle.get("verified"):
+            # unverified: rate without it, but show what it would give
+            t = trips(o, d, p["label"], dest_is_station=st)
+            w = trips(o, d, p["label"], dest_is_station=st, shuttle=dict(shuttle, verified=True))
+            if t and w and w.get("shuttle") and w["min"] < t["min"]: t["withShuttle"] = {"min": w["min"], "rating": w["rating"], "route": w["route"]}
+            out[p["key"]] = t
+        else:
+            out[p["key"]] = trips(o, d, p["label"], dest_is_station=st, shuttle=shuttle if shuttle and shuttle.get("verified") else None)
+    return out
 
 USAGE = """Usage:
-  transit.py point <lat> <lng>          print trips from a point to every saved place
+  transit.py point <lat> <lng> [shuttleStation] [verified]   print trips from a point to every saved place
   transit.py unit <unitId> <lat> <lng>  compute and save lat/lng + transit on a unit
   transit.py all                        recompute every unit that has lat/lng
 Places come from Firestore hs_meta/places (items: key, label, lat, lng, optional station)."""
@@ -182,16 +200,19 @@ if __name__ == "__main__":
     if not a: sys.exit(USAGE)
     places = hs.get("meta", "places")["items"]
     if a[0] == "point":
-        print(json.dumps(for_point(float(a[1]), float(a[2]), places), ensure_ascii=False, indent=1))
+        sh = {"to": a[3], "verified": len(a) > 4 and a[4].lower().startswith("v")} if len(a) > 3 else None
+        print(json.dumps(for_point(float(a[1]), float(a[2]), places, sh), ensure_ascii=False, indent=1))
     elif a[0] == "unit":
         lat, lng = float(a[2]), float(a[3])
-        t = for_point(lat, lng, places)
+        u = hs.get("units", a[1]); sh = u.get("shuttle") if isinstance(u.get("shuttle"), dict) else None
+        t = for_point(lat, lng, places, sh)
         hs.update("units", a[1], {"lat": lat, "lng": lng, "transit": t})
         print(json.dumps(t, ensure_ascii=False, indent=1))
     elif a[0] == "all":
         for u in hs.list_docs("hs_units"):
             if isinstance(u.get("lat"), (int, float)):
-                hs.update("units", u["id"], {"transit": for_point(u["lat"], u["lng"], places)})
+                sh = u.get("shuttle") if isinstance(u.get("shuttle"), dict) else None
+                hs.update("units", u["id"], {"transit": for_point(u["lat"], u["lng"], places, sh)})
                 print("updated", u["id"])
     else:
         sys.exit(USAGE)

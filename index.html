@@ -392,9 +392,16 @@ function pic(k){
 }
 const RATE_LABEL = {easy:"Easy", ok:"OK", hard:"Hard"};
 const tripOf = (r, k) => r.transit && r.transit[k];
+/* Condo shuttle to the MRT: unit.shuttle {to, note, verified}. Verified shuttles are already
+   inside the school-run numbers (transit.py); unverified ones show as "with shuttle ≈N". */
+function shuttleChip(r){
+  const sh = r.shuttle; if(!sh || !sh.to) return "";
+  return `<span class="chip fact" title="${esc(sh.note||"")}">🚌 Shuttle to ${esc(sh.to)}${sh.verified ? "" : " <span class=\"muted\">(unverified)</span>"}${sh.note ? " · " + esc(sh.note) : ""}</span>`;
+}
 function tripChips(r){
   if(!places.length || !r.transit) return "";
-  return `<div class="trips">${places.map(p => { const t = tripOf(r, p.key); return t ? `<span class="trip ${esc(t.rating)}" title="${esc(t.route)}"><i></i>${esc(p.emoji||"")} ${esc(p.short||p.label)} ≈${esc(t.min)} min${t.xfers?` · ${t.xfers} change${t.xfers>1?"s":""}`:""}</span>` : ""; }).join("")}</div>`;
+  return `<div class="trips">${places.map(p => { const t = tripOf(r, p.key); if(!t) return ""; const ws = t.withShuttle;
+    return `<span class="trip ${esc(t.rating)}" title="${esc(t.route)}"><i></i>${esc(p.emoji||"")} ${esc(p.short||p.label)} ≈${esc(t.min)} min${t.xfers?` · ${t.xfers} change${t.xfers>1?"s":""}`:""}${t.shuttle?" · shuttle":""}${ws ? ` · <span class="muted">with shuttle ≈${esc(ws.min)}</span>` : ""}</span>`; }).join("")}</div>`;
 }
 const tripScore = r => !places.length || !r.transit ? 999 : places.reduce((a,p) => { const t = tripOf(r,p.key); return a + (t ? t.min + (t.rating==="hard"?15:t.rating==="ok"?5:0) : 120); }, 0);
 const dirUrl = (r, p) => `https://www.google.com/maps/dir/?api=1&origin=${r.lat},${r.lng}&destination=${p.lat},${p.lng}&travelmode=transit`;
@@ -461,7 +468,7 @@ async function save(id, data, okMsg){
 }
 
 /* ---------- App version: tell them when a newer one is published ---------- */
-const APP_VERSION = "2026-10-20T14:55+08:00"; // bump on every publish
+const APP_VERSION = "2026-10-21T14:12+08:00"; // bump on every publish
 let swReg = null, lastUpdCheck = 0, newVersion = false;
 async function checkForUpdate(force){
   if(newVersion || (!force && Date.now() - lastUpdCheck < 60000)) return;
@@ -563,7 +570,7 @@ function card(r){
     <div class="body">
       <div class="money"><span class="ask ${r.askingM>budgetOf(r)?"over":""}">${esc(money(r.askingM))}</span><span class="fair">fair ${esc(fairTxt(r))}</span></div>
       ${bar(r)}
-      <div class="chips"><span class="chip fact">${esc(r.beds||"")}</span>${r.sizeSqft?`<span class="chip fact">${Number(r.sizeSqft).toLocaleString("en-SG")} sqft</span>`:""}<span class="chip fact">🚇 ${esc(r.mrt||"—")}${r.mrtDist?" · "+esc(r.mrtDist):""}</span><span class="chip fact">⏳ ${esc(r.lease||"—")}</span><span class="chip fact">${esc(r.format||"")}</span></div>
+      <div class="chips"><span class="chip fact">${esc(r.beds||"")}</span>${r.sizeSqft?`<span class="chip fact">${Number(r.sizeSqft).toLocaleString("en-SG")} sqft</span>`:""}<span class="chip fact">🚇 ${esc(r.mrt||"—")}${r.mrtDist?" · "+esc(r.mrtDist):""}</span>${shuttleChip(r)}<span class="chip fact">⏳ ${esc(r.lease||"—")}</span><span class="chip fact">${esc(r.format||"")}</span></div>
       ${tripChips(r)}
       ${loves||concerns ? `<div class="chips">${loves}${concerns}</div>` : ""}
       <div class="hearts">${KEYS.map(k2 => heartsRow(r,k2)).join("")}${claudeRow(r)}</div>
@@ -1071,7 +1078,7 @@ function renderSheet(fresh){
       <form class="addtag" id="tagForm"><input id="tagIn" placeholder="Add a love or concern" maxlength="40" autocomplete="off"><button class="btn sm" type="submit" data-kind="loves">💚 Love</button><button class="btn sm" type="button" id="addConcern">🚩 Concern</button></form></div>
     ${places.length && r.transit ? `<details class="box fold" ${sheet.schoolOpen ? "open" : ""} data-fold="schoolOpen"><summary><h4>Getting to school</h4><span class="sum">${places.map(p => { const t = tripOf(r,p.key); return t ? `<span class="trip ${esc(t.rating)}"><i></i>${esc(p.short||p.label)} ≈${esc(t.min)}m</span>` : ""; }).filter(Boolean).join("")}</span></summary>${places.map(p => { const t = tripOf(r,p.key); if(!t) return ""; return `<div class="route"><div class="hd2"><span class="trip ${esc(t.rating)}"><i></i>${esc(RATE_LABEL[t.rating]||t.rating)}</span><b>${esc(p.emoji||"")} ${esc(p.short||p.label)}</b><span class="grow"></span><b>≈${esc(t.min)} min</b></div>
         ${p.who?`<div class="meta">${esc(p.who)}</div>`:""}<div class="rt">${esc(t.route)}</div>
-        <div class="meta">${t.xfers?esc(t.xfers)+" change"+(t.xfers>1?"s":""):"No changes"} · longest walk ≈${esc(t.walk)} min${typeof r.lat==="number"?` · <a href="${dirUrl(r,p)}" target="_blank" rel="noopener">Directions ↗</a>`:""}</div></div>`; }).join("")}
+        <div class="meta">${t.xfers?esc(t.xfers)+" change"+(t.xfers>1?"s":""):"No changes"} · longest walk ≈${esc(t.walk)} min${typeof r.lat==="number"?` · <a href="${dirUrl(r,p)}" target="_blank" rel="noopener">Directions ↗</a>`:""}</div>${t.withShuttle ? `<div class="meta" style="margin-top:4px">🚌 With the condo shuttle (unverified): ≈${esc(t.withShuttle.min)} min, ${esc(RATE_LABEL[t.withShuttle.rating]||t.withShuttle.rating)} — ${esc(t.withShuttle.route)}</div>` : ""}</div>`; }).join("")}
         <div class="meta" style="font-size:11.5px;color:var(--muted);margin-top:8px">Estimates for a weekday morning at a child's walking pace, using bus routes and the MRT (North East Line preferred, no LRT). Tap Directions for live times.</div></details>` : ""}
     <details class="box fold" ${sheet.factsOpen ? "open" : ""} data-fold="factsOpen"><summary><h4>Facts</h4><span class="sum muted">${esc([r.format, r.lease].filter(Boolean).join(" · ").slice(0,70))}</span></summary><dl class="kv">
       <dt>Format</dt><dd>${esc(r.format||"—")}</dd><dt>Beds</dt><dd>${esc(r.beds||"—")}</dd><dt>Size</dt><dd>${r.sizeSqft?Number(r.sizeSqft).toLocaleString("en-SG")+" sqft":"—"}</dd>

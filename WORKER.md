@@ -3,6 +3,16 @@
 The scheduled research task reads this file on every run and follows it in
 addition to its own instructions. Keep it short and plain.
 
+## Condo shuttle buses (21 Oct 2026)
+For every unit, check whether the condo runs a **shuttle bus to an MRT station** — listing
+descriptions, the condo's or MCST's website, resident reviews, Moovit ("<condo> shuttle").
+Save `shuttle: {"to": "<station name as in tools/transit.py, e.g. Yio Chu Kang>",
+"note": "<timings / fare / source>", "verified": false}`; use `"to": ""` with a note when
+there is none. Set `verified: true` only when a current timetable (this year) shows it runs
+in the weekday morning peak, or Adrian/Andrew confirm it. `tools/transit.py unit …` then
+counts a verified shuttle inside the school-run time; an unverified one is shown as
+"with shuttle ≈N min" but does not change the rating. Mention the shuttle in `notes`.
+
 ## Travel to the girls' schools (every new or re-researched unit)
 
 The app shows estimated weekday-morning trips from each home to the places in
