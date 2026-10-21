@@ -3,6 +3,11 @@
 The scheduled research task reads this file on every run and follows it in
 addition to its own instructions. Keep it short and plain.
 
+## Watch list (21 Oct 2026)
+Grande Vista (Cactus Drive, 999-yr): Adrian likes the estate. On each refresh, check the
+development's listings for a **2,700 sqft 4BR ground-floor maisonette** asking about
+S$3.2M or less, or any 4BR duplex/maisonette under S$2.8M, and add it with `driveSchool: true`.
+
 ## Condo shuttle buses (21 Oct 2026)
 For every unit, check whether the condo runs a **shuttle bus to an MRT station** — listing
 descriptions, the condo's or MCST's website, resident reviews, Moovit ("<condo> shuttle").
