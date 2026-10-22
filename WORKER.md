@@ -25,8 +25,9 @@ ONEMAP_PASSWORD in the environment, which your setup exports). Units carry
 local estimate — in that case leave `transitSource` unset so the unit is redone later.
 
 
-The app shows estimated weekday-morning trips from each home to the places in
-Firestore `hs_meta/places` (currently Woodleigh MRT and PLMGS on Lorong Ah Soo).
+The app shows weekday-morning trips from each home to the places in Firestore
+`hs_meta/places` (the two schools, door-to-door: key `woodleigh` is now Cedar Girls' at
+1 Cedar Ave — the key name is historical — and `plmgs` is PLMGS on Lorong Ah Soo).
 
 For every unit you add (and any unit missing `lat`/`transit`):
 

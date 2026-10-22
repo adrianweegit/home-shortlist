@@ -103,6 +103,12 @@ def bus_legs(origin_stops, dest_stops):
 
 def name(stop): return stops[stop][2] if stop in stops else stop
 
+def rate(m, x, wk, walk_only=False):
+    """easy / ok / hard for a kid's morning trip (minutes, changes, longest walk)."""
+    if walk_only: return "easy" if m <= 12 else "ok" if m <= 20 else "hard"
+    if (m <= 25 and x == 0 and wk <= 12) or (m <= 22 and x <= 1 and wk <= 10): return "easy"
+    if m > 40 or x >= 2 or wk > 16: return "hard"
+    return "ok"
 SHUTTLE_MIN = 10  # wait + ride on a condo shuttle to its MRT (runs to a timetable)
 
 def trips(origin, dest, dest_label, dest_is_station=None, shuttle=None):
@@ -164,11 +170,7 @@ def trips(origin, dest, dest_label, dest_is_station=None, shuttle=None):
     # Kids: penalise each change and long walks a little when choosing
     best = min(opts, key=lambda o: o["min"] + 5*o["xfers"] + max(0, o["walk"]-10))
     m, x, wk = best["min"], best["xfers"], best["walk"]
-    if best["mode"] == "walk":
-        rating = "easy" if m <= 12 else "ok" if m <= 20 else "hard"
-    else:
-      rating = "easy" if (m <= 25 and x == 0 and wk <= 10) or (m <= 22 and x <= 1 and wk <= 8) else \
-               "hard" if (m > 40 or x >= 2 or wk > 15) else "ok"
+    rating = rate(m, x, wk, best["mode"] == "walk")
     out = dict(min=round(m), xfers=x, walk=round(wk), rating=rating, route=best["desc"],
                mode=best["mode"], nel=bool(best.get("nel")), shuttle=bool(sh and best["desc"].startswith("Condo shuttle")))
     return out
@@ -245,8 +247,7 @@ def om_trip(origin, dest, time="07:00:00", walk_only_if_under_m=1500):
     if not opts: return None
     best = min(opts, key=lambda o: o["min"] + 5*o["xfers"] + max(0, o["walk"]-10) + (8 if o["lrt"] else 0))
     m, x, wk = best["min"], best["xfers"], best["walk"]
-    if best["mode"] == "walk": rating = "easy" if m <= 12 else "ok" if m <= 20 else "hard"
-    else: rating = "easy" if (m <= 25 and x == 0 and wk <= 10) or (m <= 22 and x <= 1 and wk <= 8) else "hard" if (m > 40 or x >= 2 or wk > 15) else "ok"
+    rating = rate(m, x, wk, best["mode"] == "walk")
     return dict(min=round(m), xfers=x, walk=round(wk), rating=rating, route=best["desc"], mode=best["mode"], nel=best["nel"], source="onemap")
 
 def trips_best(origin, dest, label, dest_is_station=None, shuttle=None):
@@ -257,7 +258,7 @@ def trips_best(origin, dest, label, dest_is_station=None, shuttle=None):
         if t:
             t = dict(t, min=t["min"] + SHUTTLE_MIN, walk=max(2, t["walk"]), route=f"Condo shuttle to {shuttle['to']} → " + t["route"], shuttle=True)
             m, x, wk = t["min"], t["xfers"], t["walk"]
-            t["rating"] = "easy" if (m <= 25 and x == 0 and wk <= 10) or (m <= 22 and x <= 1 and wk <= 8) else "hard" if (m > 40 or x >= 2 or wk > 15) else "ok"
+            t["rating"] = rate(m, x, wk)
             return t
     if om_token():
         t = om_trip(origin, dest)
