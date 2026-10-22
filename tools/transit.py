@@ -174,19 +174,106 @@ def trips(origin, dest, dest_label, dest_is_station=None, shuttle=None):
     return out
 
 
+# ---------- OneMap public-transport routing (real timetables) ----------
+# Needs a free OneMap account: ONEMAP_EMAIL / ONEMAP_PASSWORD in the environment (never in the repo).
+OM = "https://www.onemap.gov.sg/api"
+_om_tok = None
+def om_token():
+    global _om_tok
+    if _om_tok: return _om_tok
+    em, pw = os.environ.get("ONEMAP_EMAIL"), os.environ.get("ONEMAP_PASSWORD")
+    if not em or not pw: return None
+    cache = os.path.join(CACHE, "onemap.token")
+    try:
+        t = json.load(open(cache))
+        if t.get("exp", 0) > __import__("time").time() + 3600: _om_tok = t["tok"]; return _om_tok
+    except Exception: pass
+    try:
+        req = urllib.request.Request(f"{OM}/auth/post/getToken", data=json.dumps({"email": em, "password": pw}).encode(), headers={"Content-Type": "application/json"}, method="POST")
+        d = json.load(urllib.request.urlopen(req, timeout=20))
+        _om_tok = d["access_token"]; os.makedirs(CACHE, exist_ok=True)
+        json.dump({"tok": _om_tok, "exp": int(d.get("expiry_timestamp", 0))}, open(cache, "w"))
+        return _om_tok
+    except Exception as e:
+        print("OneMap login failed:", e, file=sys.stderr); return None
+
+def om_next_weekday():
+    import datetime
+    d = datetime.date.today() + datetime.timedelta(days=1)
+    while d.weekday() >= 5: d += datetime.timedelta(days=1)
+    return d.strftime("%m-%d-%Y")
+
+def om_get(path):
+    tok = om_token()
+    if not tok: return None
+    req = urllib.request.Request(f"{OM}{path}", headers={"Authorization": "Bearer " + tok})
+    try: return json.load(urllib.request.urlopen(req, timeout=30))
+    except Exception as e:
+        print("OneMap error:", e, file=sys.stderr); return None
+
+RAIL = {"NE": "NEL", "NS": "NSL", "EW": "EWL", "CC": "CCL", "DT": "DTL", "TE": "TEL", "CG": "EWL", "CE": "CCL"}
+def om_trip(origin, dest, time="07:00:00", walk_only_if_under_m=1500):
+    """Best weekday-morning public-transport trip per OneMap. Same output shape as trips()."""
+    q = f"/public/routingsvc/route?start={origin[0]},{origin[1]}&end={dest[0]},{dest[1]}&routeType=pt&date={om_next_weekday()}&time={time}&mode=TRANSIT&maxWalkDistance=1200&numItineraries=3"
+    d = om_get(q)
+    its = ((d or {}).get("plan") or {}).get("itineraries") or []
+    opts = []
+    for it in its:
+        legs = it.get("legs", []); walks = [l["duration"]/60 for l in legs if l["mode"] == "WALK"]
+        xfers = max(0, sum(1 for l in legs if l["mode"] != "WALK") - 1)
+        parts, nel, mode, lrt = [], False, "bus", False
+        for l in legs:
+            m = round(l["duration"]/60)
+            if l["mode"] == "WALK": parts.append(f"walk {m} min")
+            elif l["mode"] == "BUS":
+                n = (l["to"].get("stopIndex", 0) - l["from"].get("stopIndex", 0)) or 1
+                parts.append(f"bus {l.get('route','')} ({n} stop{'s' if n != 1 else ''})")
+            else:
+                rid = str(l.get("route") or l.get("routeId") or ""); code = rid[:2].upper(); line = RAIL.get(code, rid)
+                if code in ("SE", "SW", "PE", "PW", "BP", "PTC", "STC") or "LRT" in rid.upper(): lrt = True; line = "LRT"
+                else: mode = "mrt"
+                if code == "NE": nel = True
+                n = (l["to"].get("stopIndex", 0) - l["from"].get("stopIndex", 0)) or 1
+                parts.append(f"{line} {l['from']['name'].title()} to {l['to']['name'].title()} ({n} stop{'s' if n != 1 else ''})")
+        opts.append(dict(min=it["duration"]/60, xfers=xfers, walk=max(walks) if walks else 0, mode=mode, nel=nel, lrt=lrt,
+                         desc=" → ".join(parts).replace("walk", "Walk", 1)))
+    if hav(origin, dest) < walk_only_if_under_m:
+        w = om_get(f"/public/routingsvc/route?start={origin[0]},{origin[1]}&end={dest[0]},{dest[1]}&routeType=walk")
+        if w and w.get("route_summary"):
+            m = w["route_summary"]["total_time"]/60 * 1.15  # child pace
+            opts.append(dict(min=m, xfers=0, walk=m, mode="walk", nel=False, lrt=False, desc=f"Walk {round(m)} min"))
+    if not opts: return None
+    best = min(opts, key=lambda o: o["min"] + 5*o["xfers"] + max(0, o["walk"]-10) + (8 if o["lrt"] else 0))
+    m, x, wk = best["min"], best["xfers"], best["walk"]
+    if best["mode"] == "walk": rating = "easy" if m <= 12 else "ok" if m <= 20 else "hard"
+    else: rating = "easy" if (m <= 25 and x == 0 and wk <= 10) or (m <= 22 and x <= 1 and wk <= 8) else "hard" if (m > 40 or x >= 2 or wk > 15) else "ok"
+    return dict(min=round(m), xfers=x, walk=round(wk), rating=rating, route=best["desc"], mode=best["mode"], nel=best["nel"], source="onemap")
+
+def trips_best(origin, dest, label, dest_is_station=None, shuttle=None):
+    """OneMap when available, else the local estimate. A verified shuttle replaces the first leg."""
+    if shuttle and shuttle.get("verified") and shuttle.get("to") in STN:
+        st = STN[shuttle["to"]]["pos"]
+        t = om_trip(st, dest) if om_token() else trips(st, dest, label, dest_is_station)
+        if t:
+            t = dict(t, min=t["min"] + SHUTTLE_MIN, walk=max(2, t["walk"]), route=f"Condo shuttle to {shuttle['to']} → " + t["route"], shuttle=True)
+            m, x, wk = t["min"], t["xfers"], t["walk"]
+            t["rating"] = "easy" if (m <= 25 and x == 0 and wk <= 10) or (m <= 22 and x <= 1 and wk <= 8) else "hard" if (m > 40 or x >= 2 or wk > 15) else "ok"
+            return t
+    if om_token():
+        t = om_trip(origin, dest)
+        if t: return t
+    return trips(origin, dest, label, dest_is_station=dest_is_station)
+
 def for_point(lat, lng, places, shuttle=None):
     o = (lat, lng)
     out = {}
     for p in places:
         d = (p["lat"], p["lng"]); st = p.get("station")
-        if shuttle and shuttle.get("to") and not shuttle.get("verified"):
-            # unverified: rate without it, but show what it would give
-            t = trips(o, d, p["label"], dest_is_station=st)
-            w = trips(o, d, p["label"], dest_is_station=st, shuttle=dict(shuttle, verified=True))
-            if t and w and w.get("shuttle") and w["min"] < t["min"]: t["withShuttle"] = {"min": w["min"], "rating": w["rating"], "route": w["route"]}
-            out[p["key"]] = t
-        else:
-            out[p["key"]] = trips(o, d, p["label"], dest_is_station=st, shuttle=shuttle if shuttle and shuttle.get("verified") else None)
+        t = trips_best(o, d, p["label"], dest_is_station=st, shuttle=shuttle)
+        if t and shuttle and shuttle.get("to") and not shuttle.get("verified"):
+            w = trips_best(o, d, p["label"], dest_is_station=st, shuttle=dict(shuttle, verified=True))
+            if w and w.get("shuttle") and w["min"] < t["min"]: t["withShuttle"] = {"min": w["min"], "rating": w["rating"], "route": w["route"]}
+        out[p["key"]] = t
     return out
 
 USAGE = """Usage:
@@ -206,7 +293,9 @@ if __name__ == "__main__":
         lat, lng = float(a[2]), float(a[3])
         u = hs.get("units", a[1]); sh = u.get("shuttle") if isinstance(u.get("shuttle"), dict) else None
         t = for_point(lat, lng, places, sh)
-        hs.update("units", a[1], {"lat": lat, "lng": lng, "transit": t})
+        upd = {"lat": lat, "lng": lng, "transit": t}
+        if all(v and v.get("source") == "onemap" for v in t.values()): upd["transitSource"] = "onemap"; upd["transitAt"] = __import__("datetime").date.today().isoformat()
+        hs.update("units", a[1], upd)
         print(json.dumps(t, ensure_ascii=False, indent=1))
     elif a[0] == "all":
         for u in hs.list_docs("hs_units"):

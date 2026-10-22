@@ -18,6 +18,11 @@ or schools to the repo (use the `hs_meta/places` keys `plmgs` and `woodleigh`).
 - The research bot signs in as `hs-bot@…` with `HS_BOT_PASSWORD`. The password is
   **only** in the scheduled task's settings and in Adrian's hands — ask him for it in a
   new thread, export it in the shell, never commit it, never write it to memory.
+- School runs use OneMap's public-transport routing (real timetables) via
+  `ONEMAP_EMAIL` / `ONEMAP_PASSWORD` (Adrian's free OneMap account) — same handling as
+  the bot password: scheduled task settings only, ask Adrian in a new thread. Without
+  them `tools/transit.py` falls back to its own estimate. `www.onemap.gov.sg` must be on
+  the allowed-domains list (it is).
 - Andrew's board is unauthenticated: it may only write `replies, agentNote,
   suggestions, files, replyAt, agentSeenAt` on `hs_board/{token}` and create small docs
   in `hs_board/{token}/files`. Private things (exact hearts, Claude ratings, fair

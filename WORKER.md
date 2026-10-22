@@ -19,6 +19,11 @@ counts a verified shuttle inside the school-run time; an unverified one is shown
 "with shuttle ≈N min" but does not change the rating. Mention the shuttle in `notes`.
 
 ## Travel to the girls' schools (every new or re-researched unit)
+`tools/transit.py` now asks OneMap for real timetabled routes (needs ONEMAP_EMAIL /
+ONEMAP_PASSWORD in the environment, which your setup exports). Units carry
+`transitSource: "onemap"` and `transitAt`. If OneMap fails the tool falls back to its
+local estimate — in that case leave `transitSource` unset so the unit is redone later.
+
 
 The app shows estimated weekday-morning trips from each home to the places in
 Firestore `hs_meta/places` (currently Woodleigh MRT and PLMGS on Lorong Ah Soo).
