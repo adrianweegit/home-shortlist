@@ -249,6 +249,10 @@ table.cmp{border-collapse:collapse;width:100%;min-width:520px;font-size:13px}
 .cmp th,.cmp td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
 .cmp th{color:var(--muted);font-weight:600;width:110px;background:var(--bg)}
 .cmp thead td{font-family:var(--f-display);font-weight:700;font-size:15px}
+/* Compare bar (Homes tab) + tab badge */
+.cmpbar{position:fixed;left:max(12px,env(safe-area-inset-left,0px));right:86px;bottom:calc(env(safe-area-inset-bottom,0px) + 76px);display:flex;align-items:center;gap:8px;background:var(--paper);border-radius:14px;box-shadow:var(--shadow);padding:8px 10px;font-size:13px;z-index:19;max-width:620px}
+.cmpbar .grow{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tabic{position:relative;display:inline-flex}.tbdg{position:absolute;top:-4px;right:-10px;min-width:16px;height:16px;border-radius:99px;background:var(--rose);color:#fff;font-size:10px;font-weight:700;line-height:16px;text-align:center;padding:0 4px}
 /* Our sale card + sheet */
 .salecard{border:2px solid var(--kaya-soft);margin-bottom:12px}.salecard .body{padding-top:12px}
 .sale-hd{display:flex;align-items:center;gap:8px;font-size:13px}.salecard h3{font-family:var(--f-display);font-size:18px}.salecard .sub{font-size:13px;color:var(--muted)}
@@ -324,7 +328,7 @@ table.cmp.comps{min-width:0}.cmp.comps th{width:auto}.cmp.comps th,.cmp.comps td
   <button class="tab" data-tab="top" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-4.5-9.3-9A5.2 5.2 0 0 1 12 6.2 5.2 5.2 0 0 1 21.3 12C19 16.5 12 21 12 21z"/></svg>Top 5</button>
   <button class="tab" data-tab="view" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Viewings</button>
   <button class="tab" data-tab="homes" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Homes</button>
-  <button class="tab" data-tab="cmp" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="7" height="16" rx="2"/><rect x="14" y="4" width="7" height="16" rx="2"/></svg>Compare</button>
+  <button class="tab" data-tab="sale" type="button"><span class="tabic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg><span class="tbdg" id="saleBdg" hidden></span></span>Our sale</button>
 </div></nav>
 <button class="fab" id="fab" type="button" aria-label="Add or research listings" hidden>+</button>
 <div id="sheetRoot"></div>
@@ -368,8 +372,8 @@ let comments = [];
 let acts = [];              // activity feed (hs_meta docs with actAt)
 let actRead = {};           // {adrian: ISO, shernice: ISO} — last time each opened Activity
 let unsubs = [];
-let sale = null;            // hs_meta/sale — selling our own flat (see renderSaleSheet)
-try{ const t = localStorage.getItem("hs-tab"); if(t) tab = t; const c = JSON.parse(localStorage.getItem("hs-cmp")||"[]"); if(Array.isArray(c)) compare = c.slice(0,3); }catch(e){}
+let sale = null;            // hs_meta/sale — selling our own flat (see viewSale)
+try{ const t = localStorage.getItem("hs-tab"); if(t) tab = t === "cmp" ? "homes" : t; const c = JSON.parse(localStorage.getItem("hs-cmp")||"[]"); if(Array.isArray(c)) compare = c.slice(0,3); }catch(e){}
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -467,7 +471,8 @@ function start(){
   unsubs.push(db.doc("hs_meta/places").onSnapshot(s => { places = (s.exists && s.data().items) || []; render(); if(sheet && sheet.type === "unit") renderSheet(); }, ()=>{}));
   unsubs.push(db.collection("hs_meta").orderBy("actAt","desc").limit(150).onSnapshot(s => { acts = s.docs.map(d => Object.assign({id:d.id}, d.data())); render(); if(sheet && sheet.type === "activity") renderActivitySheet(); }, ()=>{}));
   unsubs.push(db.doc("hs_meta/actread").onSnapshot(s => { actRead = s.exists ? s.data() : {}; render(); }, ()=>{}));
-  unsubs.push(db.doc("hs_meta/sale").onSnapshot(s => { sale = s.exists ? s.data() : null; render(); if(sheet && sheet.type === "sale") keepScroll(renderSaleSheet); }, ()=>{}));
+  unsubs.push(db.doc("hs_meta/sale").onSnapshot(s => { sale = s.exists ? s.data() : null; if(tab === "sale" && !saleSince && sale && sale.seen) saleSince = sale.seen[me.key] || "";
+    const ae = document.activeElement; if(tab === "sale" && ae && ae.closest && ae.closest("#salePage") && ae.tagName === "INPUT") return; const y = window.scrollY; render(); window.scrollTo(0, y); }, ()=>{}));
   unsubs.push(db.doc("hs_meta/worker").onSnapshot(s => { meta = s.exists ? s.data() : null; if(sheet && sheet.type === "add") renderSheet(); }, ()=>{}));
 }
 const unitRef = id => db.collection("hs_units").doc(id);
@@ -478,7 +483,7 @@ async function save(id, data, okMsg){
 }
 
 /* ---------- App version: tell them when a newer one is published ---------- */
-const APP_VERSION = "2026-10-25T12:10+08:00"; // bump on every publish
+const APP_VERSION = "2026-10-25T12:40+08:00"; // bump on every publish
 let swReg = null, lastUpdCheck = 0, newVersion = false;
 async function checkForUpdate(force){
   if(newVersion || (!force && Date.now() - lastUpdCheck < 60000)) return;
@@ -510,13 +515,17 @@ function render(){
   let body = "";
   if(tab === "top") body = viewTop();
   else if(tab === "view") body = viewViewings();
-  else if(tab === "cmp") body = viewCompare();
+  else if(tab === "sale") body = viewSale();
   else body = viewHomes();
   const ae = document.activeElement, keepQ = ae && ae.id === "q" ? ae.selectionStart : null;
   $("app").innerHTML = head + body + `<footer class="ver"><button type="button" id="verBtn">App updated ${esc(versionLabel())} · check for updates</button></footer>`;
   $("verBtn").onclick = () => checkForUpdate(true);
   if(keepQ !== null && $("q")){ $("q").focus(); try{ $("q").setSelectionRange(keepQ, keepQ); }catch(e){} }
   $("signout").onclick = () => auth.signOut();
+  const fresh = sale ? saleStats().fresh.length : 0, sb = $("saleBdg");
+  if(sb){ sb.hidden = !fresh || tab === "sale"; sb.textContent = fresh > 9 ? "9+" : fresh; }
+  $("fab").hidden = tab === "sale";
+  if(tab === "sale") bindSale();
 }
 
 /* ---------- Card ---------- */
@@ -762,10 +771,22 @@ function homesFiltered(){
 }
 function viewHomes(){
   const list = homesFiltered(), q = query.trim();
-  return (q ? "" : saleCard()) + `<input class="search" id="q" type="search" placeholder="Search by name, area or MRT" value="${esc(query)}" autocomplete="off" enterkeyhint="search" style="margin-bottom:10px">
+  return `<input class="search" id="q" type="search" placeholder="Search by name, area or MRT" value="${esc(query)}" autocomplete="off" enterkeyhint="search" style="margin-bottom:10px">
     <div class="tool"><div class="scrollx">${FILTERS.map(([k,l,f]) => `<button class="chip f" type="button" data-filter="${k}" aria-pressed="${filter===k}">${esc(l || "🤝 With " + AGENT())} ${units.filter(f).length}</button>`).join("")}</div>
     <label style="font-size:13px;color:var(--muted)">Sort <select id="sort"><option value="dist" ${sort==="dist"?"selected":""}>Closest to Kovan</option><option value="hearts" ${sort==="hearts"?"selected":""}>Most hearts</option><option value="price" ${sort==="price"?"selected":""}>Lowest price</option><option value="value" ${sort==="value"?"selected":""}>Best vs fair value</option><option value="school" ${sort==="school"?"selected":""}>Easiest school runs</option><option value="claude" ${sort==="claude"?"selected":""}>Claude's picks</option><option value="board" ${sort==="board"?"selected":""}>On ${esc(AGENT())}'s board first</option></select></label></div>
-    <div id="homeList">${homeList(list, q)}</div>`;
+    <div id="homeList">${homeList(list, q)}</div>${cmpBar()}`;
+}
+/* Compare lives inside Homes: a bar appears once a home is picked, and the table opens as a sheet. */
+function cmpBar(){
+  const sel = compare.map(id => units.find(u => u.id === id)).filter(Boolean);
+  if(!sel.length) return "";
+  return `<div style="height:60px"></div><div class="cmpbar"><span class="grow">${sel.length < 2 ? "Pick 1 or 2 more homes to compare" : "Comparing " + sel.map(u => esc(u.name)).join(" · ")}</span><button class="ghost" id="clearcmp" type="button">Clear</button>${sel.length >= 2 ? `<button class="btn primary sm" type="button" id="openCmp">Compare (${sel.length}) ›</button>` : ""}</div>`;
+}
+function renderCmpSheet(){
+  $("sheetRoot").innerHTML = `<div class="scrim" id="scrim"></div><div class="sheet" role="dialog" aria-modal="true" aria-label="Compare">
+    <div class="hd"><h3>Compare</h3><button class="close" id="closeSheet" type="button" aria-label="Close">×</button></div>
+    <div class="sc" id="sheetScroll">${viewCompare().replace(/<h2 class="sec">Compare[\s\S]*?<\/h2>/, "")}</div></div>`;
+  $("scrim").onclick = closeSheet; $("closeSheet").onclick = closeSheet;
 }
 function homeList(list, q){
   if(!list.length) return `<div class="empty">${q ? "No homes match “" + esc(query.trim()) + "”." : "Nothing here yet."}</div>`;
@@ -812,33 +833,27 @@ function saleBar(){
   return `<div><div class="bar">${typeof s.fairLowM==="number"?`<span class="band" style="left:${pct(s.fairLowM)};width:calc(${pct(s.fairHighM)} - ${pct(s.fairLowM)})"></span>`:""}${typeof s.bankLowM==="number"?`<span class="bankb" style="left:${pct(s.bankLowM)};width:calc(${pct(s.bankHighM)} - ${pct(s.bankLowM)})"></span>`:""}${dots}<span class="mk" style="left:calc(${pct(s.askingM)} - 2px)" title="Our asking"></span></div>
     <div class="barlbl"><span>▮ our asking · ▭ fair · ━ bank · • sales, last 12 months</span></div></div>`;
 }
-function saleCard(){
-  if(!sale) return "";
-  const s = sale, st = saleStats(), last = st.comps[0];
-  return `<article class="card salecard"><div class="body">
-    <div class="sale-hd"><span class="btag">🏷️ Our sale</span><span class="grow"></span>${st.fresh.length ? `<span class="pill new">${st.fresh.length} new sale${st.fresh.length>1?"s":""} nearby</span>` : ""}</div>
-    <h3 style="margin:6px 0 2px">${esc(s.title||"Our flat")}</h3><div class="sub">${esc(s.flat||"")}</div>
-    <div class="money"><span class="ask">${esc(money(s.askingM))}</span><span class="fair">fair ${esc(fairTxt(s))}${typeof s.bankLowM==="number" ? " · bank " + esc(fmtM(s.bankLowM) + "–" + fmtM(s.bankHighM).replace("S$","")) : ""}</span></div>
-    ${saleBar()}
-    <div class="chips" style="margin-top:8px">${st.med ? `<span class="chip fact">12-mth median ${esc(kS(st.med))} (${st.yr.length} sales)</span>` : ""}${last ? `<span class="chip fact">Latest: Blk ${esc(last.blk)} · ${esc(last.storey)} · ${esc(kS(last.p))} · ${esc(monLbl(last.m))}</span>` : ""}${(s.competing||[]).length ? `<span class="chip concern">${(s.competing||[]).length} competing listing${s.competing.length>1?"s":""}</span>` : ""}</div>
-  </div><div class="foot"><button class="btn primary sm" type="button" data-saleopen="1">Details & nearby sales</button>${s.listingUrl ? `<a class="btn sm" href="${esc(s.listingUrl)}" target="_blank" rel="noopener">Our listing ↗</a>` : ""}</div></article>`;
+let saleSince = "", saleAll = false;
+function openSale(){ // the bell and the tab both land here
+  if(sheet) closeSheet();
+  tab = "sale"; try{localStorage.setItem("hs-tab",tab);}catch(e){}
+  markSaleSeen(); render(); window.scrollTo(0,0);
 }
-function openSale(){
-  sheet = {type:"sale", all:false, since: (sale && sale.seen && sale.seen[me.key]) || ""};
-  saleRef().set({seen:{[me.key]: new Date().toISOString()}}, {merge:true}).catch(()=>{});
-  renderSheet(true);
+function markSaleSeen(){
+  if(!sale || !me) return;
+  saleSince = (sale.seen && sale.seen[me.key]) || "";
+  const now = new Date().toISOString();
+  sale = Object.assign({}, sale, {seen: Object.assign({}, sale.seen, {[me.key]: now})});
+  saleRef().set({seen:{[me.key]: now}}, {merge:true}).catch(()=>{});
 }
-function renderSaleSheet(){
-  if(!sale){ closeSheet(); return; }
-  const s = sale, st = saleStats(), since = sheet.since || "";
-  const rows = (sheet.all ? st.comps : st.comps.slice(0, 12)).map(c => `<tr class="${c.at && c.at > since ? "newrow" : ""}"><td>${esc(monLbl(c.m))}</td><td>${esc(c.blk)}${c.st ? ` <span class="muted">${esc(c.st)}</span>` : ""}</td><td>${esc(c.storey)}</td><td>${esc(c.sqm)}</td><td><b>${esc(kS(c.p))}</b></td><td class="muted">${c.sqm ? Math.round(c.p/(c.sqm*SQFT)) : "—"}</td></tr>`).join("");
+function viewSale(){
+  if(!sale) return `<h2 class="sec">Our sale</h2><div class="empty">Nothing here yet — Claude adds your flat's details and nearby sales.</div>`;
+  const s = sale, st = saleStats(), since = saleSince;
+  const rows = (saleAll ? st.comps : st.comps.slice(0, 12)).map(c => `<tr class="${c.at && c.at > since ? "newrow" : ""}"><td>${esc(monLbl(c.m))}</td><td>${esc(c.blk)}${c.st ? ` <span class="muted">${esc(c.st)}</span>` : ""}</td><td>${esc(c.storey)}</td><td>${esc(c.sqm)}</td><td><b>${esc(kS(c.p))}</b></td><td class="muted">${c.sqm ? Math.round(c.p/(c.sqm*SQFT)) : "—"}</td></tr>`).join("");
   const mine = typeof s.askingM === "number" && s.sqm ? Math.round(s.askingM*1e6/(s.sqm*SQFT)) : null;
   const comp = (s.competing||[]).map((c,i) => `<div class="rrow"><div class="grow" style="min-width:0"><b>${esc(fmtM(c.askingM))}</b>${typeof c.askingM==="number"&&typeof s.askingM==="number" ? ` <span class="muted">(${c.askingM < s.askingM ? esc(kS((s.askingM-c.askingM)*1e6)) + " below ours" : c.askingM > s.askingM ? esc(kS((c.askingM-s.askingM)*1e6)) + " above ours" : "same as ours"})</span>` : ""}<div class="rs">${esc(c.note||"")}${c.note?" · ":""}${c.url ? `<a href="${esc(c.url)}" target="_blank" rel="noopener">listing ↗</a> · ` : ""}${esc(NAME[c.by]||c.by||"")} ${esc(ago(c.at))}</div></div><button class="btn sm" type="button" data-salerm="${i+1}" aria-label="Remove">×</button></div>`).join("");
   const li = a => (a||[]).map(t => `<li>${esc(t)}</li>`).join("");
-  $("sheetRoot").innerHTML = `<div class="scrim" id="scrim"></div><div class="sheet" role="dialog" aria-modal="true" aria-label="Our sale">
-    <div class="hd"><h3>🏷️ Our sale</h3><button class="close" id="closeSheet" type="button" aria-label="Close">×</button></div>
-    <div class="sc" id="sheetScroll">
-      <div class="box"><h4>${esc(s.title||"Our flat")}</h4><div style="font-size:13.5px;color:var(--muted)">${esc(s.flat||"")}${s.lease ? " · lease left " + esc(s.lease) : ""}</div>
+  return `<div id="salePage"><h2 class="sec">🏷️ Our sale</h2><div class="box"><h4>${esc(s.title||"Our flat")}</h4><div style="font-size:13.5px;color:var(--muted)">${esc(s.flat||"")}${s.lease ? " · lease left " + esc(s.lease) : ""}</div>
         <div class="money" style="margin-top:6px"><span class="ask">${esc(money(s.askingM))}</span><span class="fair">${mine ? "≈" + mine + " psf · " : ""}fair ${esc(fairTxt(s))}</span></div>${saleBar()}
         ${typeof s.bankLowM==="number" ? `<div style="font-size:13px;margin-top:6px">Bank check: <b>${esc(fmtM(s.bankLowM))}–${esc(fmtM(s.bankHighM).replace("S$",""))}</b>${typeof s.askingM==="number" ? ` <span class="muted">· a buyer at our asking pays about ${esc(kS((s.askingM-s.bankHighM)*1e6))}–${esc(kS((s.askingM-s.bankLowM)*1e6))} in cash over valuation</span>` : ""}</div>` : ""}
         <form class="addtag" id="askForm" style="margin-top:10px"><input id="askIn" inputmode="decimal" placeholder="Changed the asking price? e.g. 1.098" autocomplete="off"><button class="btn sm" type="submit">Update</button></form>
@@ -848,13 +863,15 @@ function renderSaleSheet(){
       <div class="box"><h4>Nearby sales <span style="text-transform:none;letter-spacing:0;font-weight:400">· same flat type, HDB records</span></h4>
         ${st.med ? `<div style="font-size:13px;margin-bottom:6px">Last 12 months: <b>${st.yr.length}</b> sales · median <b>${esc(kS(st.med))}</b> · range ${esc(kS(st.lo))}–${esc(kS(st.hi))}</div>` : ""}
         <div class="cmpwrap"><table class="cmp comps"><thead><tr><th>Month</th><th>Blk</th><th>Floor</th><th>sqm</th><th>Price</th><th>psf</th></tr></thead><tbody>${rows || `<tr><td colspan="6" class="muted">No sales loaded yet.</td></tr>`}</tbody></table></div>
-        ${st.comps.length > 12 ? `<button class="btn sm" type="button" data-salemore="1" style="margin-top:8px">${sheet.all ? "Show fewer" : "Show all " + st.comps.length}</button>` : ""}
+        ${st.comps.length > 12 ? `<button class="btn sm" type="button" data-salemore="1" style="margin-top:8px">${saleAll ? "Show fewer" : "Show all " + st.comps.length}</button>` : ""}
         <p style="font-size:12px;color:var(--muted);margin:8px 0 0">Claude checks HDB's records every morning and posts new sales to the 🔔 feed.${s.compsAt ? " Last checked " + esc(ago(s.compsAt)) + "." : ""}</p></div>
       <div class="box"><h4>Competing listings</h4>${comp || `<div style="color:var(--muted);font-size:13px">None added yet.</div>`}
         <form class="form" id="compForm" style="margin-top:8px;display:grid;gap:6px"><input id="compUrl" type="url" inputmode="url" placeholder="Listing link (PropertyGuru, SRX…)" autocomplete="off"><div style="display:flex;gap:6px"><input id="compAsk" inputmode="decimal" placeholder="Asking e.g. 1.08" autocomplete="off" style="flex:0 0 118px"><input id="compNote" placeholder="Note, e.g. Blk 238, high floor" autocomplete="off"></div><button class="btn primary sm" type="submit">Add listing</button></form>
-        <p style="font-size:12px;color:var(--muted);margin:8px 0 0">Listing sites block Claude's automatic checks, so paste the ones you or ${esc(AGENT())} spot here.</p></div>
-    </div></div>`;
-  $("scrim").onclick = closeSheet; $("closeSheet").onclick = closeSheet;
+        <p style="font-size:12px;color:var(--muted);margin:8px 0 0">Listing sites block Claude's automatic checks, so paste the ones you or ${esc(AGENT())} spot here.</p></div></div>`;
+}
+function bindSale(){
+  if(!$("askForm")) return;
+  const s = sale;
   $("askForm").onsubmit = async ev => { ev.preventDefault(); const v = parseMoney($("askIn").value); if(!v || v < 0.3 || v > 3){ toast("Type the price in millions, e.g. 1.098"); return; }
     try { await saleRef().set({askingM:v, askAt:new Date().toISOString(), askBy:me.key}, {merge:true}); logAct(null, {kind:"sale", by:me.key, unitId:"", unitName:"", text:`Asking price changed from ${fmtM(s.askingM)} to ${fmtM(v)}`}); toast("Asking price updated"); } catch(e){ toast("Couldn't save — check your connection"); } };
   $("compForm").onsubmit = async ev => { ev.preventDefault(); const url = $("compUrl").value.trim(), a = parseMoney($("compAsk").value), note = $("compNote").value.trim();
@@ -1164,7 +1181,7 @@ function renderSheet(fresh){
   if(sheet.type === "reply") return renderReplySheet();
   if(sheet.type === "dup") return renderDupSheet();
   if(sheet.type === "activity") return renderActivitySheet();
-  if(sheet.type === "sale") return renderSaleSheet();
+  if(sheet.type === "cmp") return renderCmpSheet();
   const r = units.find(u => u.id === sheet.id);
   if(!r){ closeSheet(); return; }
   const st = STATUSES.includes(r.status) ? r.status : "Unviewed";
@@ -1748,7 +1765,7 @@ async function addComment(id, by, text){
 /* ---------- Events ---------- */
 document.addEventListener("click", ev => {
   const t = ev.target.closest("button,[data-open]"); if(!t || !me) return;
-  if(t.classList.contains("tab")){ tab = t.dataset.tab; try{localStorage.setItem("hs-tab",tab);}catch(e){} render(); window.scrollTo(0,0); return; }
+  if(t.classList.contains("tab")){ if(t.dataset.tab === "sale"){ openSale(); return; } tab = t.dataset.tab; try{localStorage.setItem("hs-tab",tab);}catch(e){} render(); window.scrollTo(0,0); return; }
   if(t.id === "askBtn"){ openAsk(); return; }
   if(t.id === "bellBtn"){ openActivity(); return; }
   if(t.dataset.clwhy){ const id = t.dataset.clwhy; openWhy.has(id) ? openWhy.delete(id) : openWhy.add(id); if(sheet && sheet.type === "unit") keepScroll(renderSheet); else { const y = window.scrollY; render(); window.scrollTo(0, y); } return; }
@@ -1756,7 +1773,8 @@ document.addEventListener("click", ev => {
   if(t.dataset.gotab){ tab = t.dataset.gotab; try{localStorage.setItem("hs-tab",tab);}catch(e){} render(); window.scrollTo(0,0); return; }
   if(t.dataset.saleopen){ openSale(); return; }
   if(t.dataset.salerm){ removeCompeting(+t.dataset.salerm); return; }
-  if(t.dataset.salemore){ sheet.all = !sheet.all; keepScroll(renderSaleSheet); return; }
+  if(t.dataset.salemore){ saleAll = !saleAll; const y = window.scrollY; render(); window.scrollTo(0, y); return; }
+  if(t.id === "openCmp"){ sheet = {type:"cmp"}; renderSheet(true); return; }
   if(t.dataset.actopen){ openUnit(t.dataset.actopen, t.dataset.chat === "1"); return; }
   if(t.dataset.actf){ sheet.f = t.dataset.actf; renderActivitySheet(); return; }
   if(t.dataset.reply){ openReply(); return; }
@@ -1798,7 +1816,7 @@ document.addEventListener("click", ev => {
   if(t.dataset.filter){ filter = t.dataset.filter; render(); return; }
   if(t.id === "seeAllNew" || t.id === "seeUnrated"){ filter = t.id === "seeAllNew" ? "new" : "mine"; tab = "homes"; try{localStorage.setItem("hs-tab",tab);}catch(e){} render(); window.scrollTo(0,0); return; }
   if(t.dataset.cmp){ const id = t.dataset.cmp; compare = compare.includes(id) ? compare.filter(x => x !== id) : compare.concat(id).slice(-3); try{localStorage.setItem("hs-cmp",JSON.stringify(compare));}catch(e){} render(); toast(compare.includes(id) ? "Added to Compare (" + compare.length + "/3)" : "Removed from Compare"); return; }
-  if(t.id === "clearcmp"){ compare = []; try{localStorage.setItem("hs-cmp","[]");}catch(e){} render(); return; }
+  if(t.id === "clearcmp"){ if(sheet && sheet.type === "cmp") closeSheet(); compare = []; try{localStorage.setItem("hs-cmp","[]");}catch(e){} render(); return; }
   if(t.dataset.check){ const r = units.find(u => u.id === t.dataset.check); if(!r) return; const c = t.dataset.c; save(r.id, {["checks."+ckey(c)]: !(r.checks||{})[ckey(c)]}); return; }
   if(t.dataset.untag){ const r = units.find(u => u.id === sheet.id); if(!r) return; const arr = (r[t.dataset.untag]||[]); save(r.id, {[t.dataset.untag]: FV.arrayRemove(arr[+t.dataset.i])}); return; }
 });
