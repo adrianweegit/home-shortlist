@@ -249,6 +249,14 @@ table.cmp{border-collapse:collapse;width:100%;min-width:520px;font-size:13px}
 .cmp th,.cmp td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
 .cmp th{color:var(--muted);font-weight:600;width:110px;background:var(--bg)}
 .cmp thead td{font-family:var(--f-display);font-weight:700;font-size:15px}
+/* Our sale card + sheet */
+.salecard{border:2px solid var(--kaya-soft);margin-bottom:12px}.salecard .body{padding-top:12px}
+.sale-hd{display:flex;align-items:center;gap:8px;font-size:13px}.salecard h3{font-family:var(--f-display);font-size:18px}.salecard .sub{font-size:13px;color:var(--muted)}
+.bar .bankb{position:absolute;top:2px;height:4px;background:var(--sky);border-radius:2px;opacity:.85}
+.bar .sdot{position:absolute;top:1px;width:6px;height:6px;border-radius:50%;background:var(--muted);opacity:.7}
+table.cmp.comps{min-width:0}.cmp.comps th{width:auto}.cmp.comps th,.cmp.comps td{padding:6px 6px;white-space:nowrap}.cmp.comps tr.newrow td{background:var(--kaya-soft)}
+.updown{display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13.5px}.updown ul{margin:4px 0 0;padding-left:18px}.updown li{margin:2px 0}
+@media (max-width:520px){.updown{grid-template-columns:1fr}}
 
 /* Toolbar */
 .tool{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
@@ -360,6 +368,7 @@ let comments = [];
 let acts = [];              // activity feed (hs_meta docs with actAt)
 let actRead = {};           // {adrian: ISO, shernice: ISO} — last time each opened Activity
 let unsubs = [];
+let sale = null;            // hs_meta/sale — selling our own flat (see renderSaleSheet)
 try{ const t = localStorage.getItem("hs-tab"); if(t) tab = t; const c = JSON.parse(localStorage.getItem("hs-cmp")||"[]"); if(Array.isArray(c)) compare = c.slice(0,3); }catch(e){}
 
 const $ = id => document.getElementById(id);
@@ -458,6 +467,7 @@ function start(){
   unsubs.push(db.doc("hs_meta/places").onSnapshot(s => { places = (s.exists && s.data().items) || []; render(); if(sheet && sheet.type === "unit") renderSheet(); }, ()=>{}));
   unsubs.push(db.collection("hs_meta").orderBy("actAt","desc").limit(150).onSnapshot(s => { acts = s.docs.map(d => Object.assign({id:d.id}, d.data())); render(); if(sheet && sheet.type === "activity") renderActivitySheet(); }, ()=>{}));
   unsubs.push(db.doc("hs_meta/actread").onSnapshot(s => { actRead = s.exists ? s.data() : {}; render(); }, ()=>{}));
+  unsubs.push(db.doc("hs_meta/sale").onSnapshot(s => { sale = s.exists ? s.data() : null; render(); if(sheet && sheet.type === "sale") keepScroll(renderSaleSheet); }, ()=>{}));
   unsubs.push(db.doc("hs_meta/worker").onSnapshot(s => { meta = s.exists ? s.data() : null; if(sheet && sheet.type === "add") renderSheet(); }, ()=>{}));
 }
 const unitRef = id => db.collection("hs_units").doc(id);
@@ -468,7 +478,7 @@ async function save(id, data, okMsg){
 }
 
 /* ---------- App version: tell them when a newer one is published ---------- */
-const APP_VERSION = "2026-10-25T12:00+08:00"; // bump on every publish
+const APP_VERSION = "2026-10-25T12:10+08:00"; // bump on every publish
 let swReg = null, lastUpdCheck = 0, newVersion = false;
 async function checkForUpdate(force){
   if(newVersion || (!force && Date.now() - lastUpdCheck < 60000)) return;
@@ -752,7 +762,7 @@ function homesFiltered(){
 }
 function viewHomes(){
   const list = homesFiltered(), q = query.trim();
-  return `<input class="search" id="q" type="search" placeholder="Search by name, area or MRT" value="${esc(query)}" autocomplete="off" enterkeyhint="search" style="margin-bottom:10px">
+  return (q ? "" : saleCard()) + `<input class="search" id="q" type="search" placeholder="Search by name, area or MRT" value="${esc(query)}" autocomplete="off" enterkeyhint="search" style="margin-bottom:10px">
     <div class="tool"><div class="scrollx">${FILTERS.map(([k,l,f]) => `<button class="chip f" type="button" data-filter="${k}" aria-pressed="${filter===k}">${esc(l || "🤝 With " + AGENT())} ${units.filter(f).length}</button>`).join("")}</div>
     <label style="font-size:13px;color:var(--muted)">Sort <select id="sort"><option value="dist" ${sort==="dist"?"selected":""}>Closest to Kovan</option><option value="hearts" ${sort==="hearts"?"selected":""}>Most hearts</option><option value="price" ${sort==="price"?"selected":""}>Lowest price</option><option value="value" ${sort==="value"?"selected":""}>Best vs fair value</option><option value="school" ${sort==="school"?"selected":""}>Easiest school runs</option><option value="claude" ${sort==="claude"?"selected":""}>Claude's picks</option><option value="board" ${sort==="board"?"selected":""}>On ${esc(AGENT())}'s board first</option></select></label></div>
     <div id="homeList">${homeList(list, q)}</div>`;
@@ -776,6 +786,86 @@ function viewCompare(){
     ${rows.map(([l,f]) => `<tr><th>${esc(l)}</th>${sel.map(u => `<td>${esc(f(u))}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
 }
 
+
+/* ---------- Our sale: selling our own flat (hs_meta/sale) ----------
+   Claude keeps: title, flat, sqm, lease, listingUrl, bankLowM/HighM, fairLowM/HighM, take,
+   up[], down[], comps[{m,blk,st,storey,sqm,p,at}], compsAt. The app edits: askingM,
+   competing[{url,askingM,note,by,at}], seen.{key}. Comps are HDB resale records. */
+const SQFT = 10.7639;
+const saleRef = () => db.doc("hs_meta/sale");
+const kS = p => "S$" + Math.round(p/1000).toLocaleString("en-SG") + "k";
+const monLbl = m => { const d = new Date(m + "-01T00:00:00"); return isNaN(d) ? m : d.toLocaleDateString("en-SG",{month:"short",year:"2-digit"}); };
+function saleStats(){
+  const comps = ((sale && sale.comps) || []).slice().sort((a,b) => (b.m||"").localeCompare(a.m||""));
+  const d = new Date(); d.setMonth(d.getMonth() - 12);
+  const since = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0");
+  const yr = comps.filter(c => (c.m||"") >= since), ps = yr.map(c => c.p).sort((a,b) => a-b);
+  const med = ps.length ? (ps.length % 2 ? ps[(ps.length-1)/2] : (ps[ps.length/2-1] + ps[ps.length/2]) / 2) : null;
+  const seen = (sale && sale.seen && sale.seen[me.key]) || "";
+  return {comps, yr, med, hi: ps.length ? ps[ps.length-1] : null, lo: ps.length ? ps[0] : null, fresh: comps.filter(c => c.at && c.at > seen)};
+}
+function saleBar(){
+  const s = sale, st = saleStats(); if(typeof s.askingM !== "number") return "";
+  const vals = [s.askingM].concat(st.yr.map(c => c.p/1e6), typeof s.fairLowM === "number" ? [s.fairLowM, s.fairHighM] : [], typeof s.bankLowM === "number" ? [s.bankLowM, s.bankHighM] : []);
+  const min = Math.min(...vals)*0.98, max = Math.max(...vals)*1.02, pct = v => ((v-min)/(max-min)*100).toFixed(1) + "%";
+  const dots = st.yr.map(c => `<span class="sdot" style="left:calc(${pct(c.p/1e6)} - 3px)" title="${esc(monLbl(c.m) + " · Blk " + c.blk + " · " + kS(c.p))}"></span>`).join("");
+  return `<div><div class="bar">${typeof s.fairLowM==="number"?`<span class="band" style="left:${pct(s.fairLowM)};width:calc(${pct(s.fairHighM)} - ${pct(s.fairLowM)})"></span>`:""}${typeof s.bankLowM==="number"?`<span class="bankb" style="left:${pct(s.bankLowM)};width:calc(${pct(s.bankHighM)} - ${pct(s.bankLowM)})"></span>`:""}${dots}<span class="mk" style="left:calc(${pct(s.askingM)} - 2px)" title="Our asking"></span></div>
+    <div class="barlbl"><span>▮ our asking · ▭ fair · ━ bank · • sales, last 12 months</span></div></div>`;
+}
+function saleCard(){
+  if(!sale) return "";
+  const s = sale, st = saleStats(), last = st.comps[0];
+  return `<article class="card salecard"><div class="body">
+    <div class="sale-hd"><span class="btag">🏷️ Our sale</span><span class="grow"></span>${st.fresh.length ? `<span class="pill new">${st.fresh.length} new sale${st.fresh.length>1?"s":""} nearby</span>` : ""}</div>
+    <h3 style="margin:6px 0 2px">${esc(s.title||"Our flat")}</h3><div class="sub">${esc(s.flat||"")}</div>
+    <div class="money"><span class="ask">${esc(money(s.askingM))}</span><span class="fair">fair ${esc(fairTxt(s))}${typeof s.bankLowM==="number" ? " · bank " + esc(fmtM(s.bankLowM) + "–" + fmtM(s.bankHighM).replace("S$","")) : ""}</span></div>
+    ${saleBar()}
+    <div class="chips" style="margin-top:8px">${st.med ? `<span class="chip fact">12-mth median ${esc(kS(st.med))} (${st.yr.length} sales)</span>` : ""}${last ? `<span class="chip fact">Latest: Blk ${esc(last.blk)} · ${esc(last.storey)} · ${esc(kS(last.p))} · ${esc(monLbl(last.m))}</span>` : ""}${(s.competing||[]).length ? `<span class="chip concern">${(s.competing||[]).length} competing listing${s.competing.length>1?"s":""}</span>` : ""}</div>
+  </div><div class="foot"><button class="btn primary sm" type="button" data-saleopen="1">Details & nearby sales</button>${s.listingUrl ? `<a class="btn sm" href="${esc(s.listingUrl)}" target="_blank" rel="noopener">Our listing ↗</a>` : ""}</div></article>`;
+}
+function openSale(){
+  sheet = {type:"sale", all:false, since: (sale && sale.seen && sale.seen[me.key]) || ""};
+  saleRef().set({seen:{[me.key]: new Date().toISOString()}}, {merge:true}).catch(()=>{});
+  renderSheet(true);
+}
+function renderSaleSheet(){
+  if(!sale){ closeSheet(); return; }
+  const s = sale, st = saleStats(), since = sheet.since || "";
+  const rows = (sheet.all ? st.comps : st.comps.slice(0, 12)).map(c => `<tr class="${c.at && c.at > since ? "newrow" : ""}"><td>${esc(monLbl(c.m))}</td><td>${esc(c.blk)}${c.st ? ` <span class="muted">${esc(c.st)}</span>` : ""}</td><td>${esc(c.storey)}</td><td>${esc(c.sqm)}</td><td><b>${esc(kS(c.p))}</b></td><td class="muted">${c.sqm ? Math.round(c.p/(c.sqm*SQFT)) : "—"}</td></tr>`).join("");
+  const mine = typeof s.askingM === "number" && s.sqm ? Math.round(s.askingM*1e6/(s.sqm*SQFT)) : null;
+  const comp = (s.competing||[]).map((c,i) => `<div class="rrow"><div class="grow" style="min-width:0"><b>${esc(fmtM(c.askingM))}</b>${typeof c.askingM==="number"&&typeof s.askingM==="number" ? ` <span class="muted">(${c.askingM < s.askingM ? esc(kS((s.askingM-c.askingM)*1e6)) + " below ours" : c.askingM > s.askingM ? esc(kS((c.askingM-s.askingM)*1e6)) + " above ours" : "same as ours"})</span>` : ""}<div class="rs">${esc(c.note||"")}${c.note?" · ":""}${c.url ? `<a href="${esc(c.url)}" target="_blank" rel="noopener">listing ↗</a> · ` : ""}${esc(NAME[c.by]||c.by||"")} ${esc(ago(c.at))}</div></div><button class="btn sm" type="button" data-salerm="${i+1}" aria-label="Remove">×</button></div>`).join("");
+  const li = a => (a||[]).map(t => `<li>${esc(t)}</li>`).join("");
+  $("sheetRoot").innerHTML = `<div class="scrim" id="scrim"></div><div class="sheet" role="dialog" aria-modal="true" aria-label="Our sale">
+    <div class="hd"><h3>🏷️ Our sale</h3><button class="close" id="closeSheet" type="button" aria-label="Close">×</button></div>
+    <div class="sc" id="sheetScroll">
+      <div class="box"><h4>${esc(s.title||"Our flat")}</h4><div style="font-size:13.5px;color:var(--muted)">${esc(s.flat||"")}${s.lease ? " · lease left " + esc(s.lease) : ""}</div>
+        <div class="money" style="margin-top:6px"><span class="ask">${esc(money(s.askingM))}</span><span class="fair">${mine ? "≈" + mine + " psf · " : ""}fair ${esc(fairTxt(s))}</span></div>${saleBar()}
+        ${typeof s.bankLowM==="number" ? `<div style="font-size:13px;margin-top:6px">Bank check: <b>${esc(fmtM(s.bankLowM))}–${esc(fmtM(s.bankHighM).replace("S$",""))}</b>${typeof s.askingM==="number" ? ` <span class="muted">· a buyer at our asking pays about ${esc(kS((s.askingM-s.bankHighM)*1e6))}–${esc(kS((s.askingM-s.bankLowM)*1e6))} in cash over valuation</span>` : ""}</div>` : ""}
+        <form class="addtag" id="askForm" style="margin-top:10px"><input id="askIn" inputmode="decimal" placeholder="Changed the asking price? e.g. 1.098" autocomplete="off"><button class="btn sm" type="submit">Update</button></form>
+        ${s.listingUrl ? `<div class="chips" style="margin-top:8px"><a class="btn sm" href="${esc(s.listingUrl)}" target="_blank" rel="noopener">Our listing ↗</a></div>` : ""}</div>
+      ${s.take ? `<div class="box"><h4>Claude's take</h4><div style="font-size:14px">${esc(s.take)}</div>${s.takeAt ? `<div class="muted" style="font-size:12px;margin-top:4px">${esc(s.takeAt)}</div>` : ""}</div>` : ""}
+      ${(s.up||[]).length || (s.down||[]).length ? `<div class="box"><h4>What helps · what hurts</h4><div class="updown"><div><b style="color:var(--pandan)">Helps</b><ul>${li(s.up)}</ul></div><div><b style="color:var(--rose)">Hurts</b><ul>${li(s.down)}</ul></div></div></div>` : ""}
+      <div class="box"><h4>Nearby sales <span style="text-transform:none;letter-spacing:0;font-weight:400">· same flat type, HDB records</span></h4>
+        ${st.med ? `<div style="font-size:13px;margin-bottom:6px">Last 12 months: <b>${st.yr.length}</b> sales · median <b>${esc(kS(st.med))}</b> · range ${esc(kS(st.lo))}–${esc(kS(st.hi))}</div>` : ""}
+        <div class="cmpwrap"><table class="cmp comps"><thead><tr><th>Month</th><th>Blk</th><th>Floor</th><th>sqm</th><th>Price</th><th>psf</th></tr></thead><tbody>${rows || `<tr><td colspan="6" class="muted">No sales loaded yet.</td></tr>`}</tbody></table></div>
+        ${st.comps.length > 12 ? `<button class="btn sm" type="button" data-salemore="1" style="margin-top:8px">${sheet.all ? "Show fewer" : "Show all " + st.comps.length}</button>` : ""}
+        <p style="font-size:12px;color:var(--muted);margin:8px 0 0">Claude checks HDB's records every morning and posts new sales to the 🔔 feed.${s.compsAt ? " Last checked " + esc(ago(s.compsAt)) + "." : ""}</p></div>
+      <div class="box"><h4>Competing listings</h4>${comp || `<div style="color:var(--muted);font-size:13px">None added yet.</div>`}
+        <form class="form" id="compForm" style="margin-top:8px;display:grid;gap:6px"><input id="compUrl" type="url" inputmode="url" placeholder="Listing link (PropertyGuru, SRX…)" autocomplete="off"><div style="display:flex;gap:6px"><input id="compAsk" inputmode="decimal" placeholder="Asking e.g. 1.08" autocomplete="off" style="flex:0 0 118px"><input id="compNote" placeholder="Note, e.g. Blk 238, high floor" autocomplete="off"></div><button class="btn primary sm" type="submit">Add listing</button></form>
+        <p style="font-size:12px;color:var(--muted);margin:8px 0 0">Listing sites block Claude's automatic checks, so paste the ones you or ${esc(AGENT())} spot here.</p></div>
+    </div></div>`;
+  $("scrim").onclick = closeSheet; $("closeSheet").onclick = closeSheet;
+  $("askForm").onsubmit = async ev => { ev.preventDefault(); const v = parseMoney($("askIn").value); if(!v || v < 0.3 || v > 3){ toast("Type the price in millions, e.g. 1.098"); return; }
+    try { await saleRef().set({askingM:v, askAt:new Date().toISOString(), askBy:me.key}, {merge:true}); logAct(null, {kind:"sale", by:me.key, unitId:"", unitName:"", text:`Asking price changed from ${fmtM(s.askingM)} to ${fmtM(v)}`}); toast("Asking price updated"); } catch(e){ toast("Couldn't save — check your connection"); } };
+  $("compForm").onsubmit = async ev => { ev.preventDefault(); const url = $("compUrl").value.trim(), a = parseMoney($("compAsk").value), note = $("compNote").value.trim();
+    if(!url && !note){ toast("Paste a link or add a note"); return; } if(url && !/^https?:\/\/\S+\.\S+/.test(url)){ toast("Paste the full link, starting with https://"); return; }
+    const item = {url, askingM: a && a < 5 ? a : null, note, by:me.key, at:new Date().toISOString()};
+    try { await saleRef().set({competing: FV.arrayUnion(item)}, {merge:true}); logAct(null, {kind:"sale", by:me.key, unitId:"", unitName:"", text:`Competing listing ${item.askingM ? "at " + fmtM(item.askingM) : "added"}${note ? " — " + note : ""}`}); toast("Added"); } catch(e){ toast("Couldn't save — check your connection"); } };
+}
+async function removeCompeting(n){
+  const c = ((sale && sale.competing) || [])[n-1]; if(!c) return;
+  try { await saleRef().update({competing: FV.arrayRemove(c)}); toast("Removed"); } catch(e){ toast("Couldn't remove — check your connection"); }
+}
 
 /* Where a home stands on Andrew's board, for its card. */
 function boardLine(r){
@@ -908,6 +998,7 @@ function actLine(a){
   if(a.kind === "file") return {head:`${who} attached a file`, text:a.text||""};
   if(a.kind === "plan") return {head:`${who} added a floor plan`, text:a.text||""};
   if(a.kind === "suggest") return {head:`${who} suggested a home`, text:a.text||""};
+  if(a.kind === "sale") return {head:`🏷️ ${who} · our sale`, text:a.text||""};
   return {head:`${who} commented`, text:a.text||""};
 }
 function renderActivitySheet(){
@@ -921,7 +1012,7 @@ function renderActivitySheet(){
     const tile = u ? devTile(u).replace('class="pic devtile"','class="pic devtile rthumb"') : "";
     const thumb = u ? (u.photoUrl ? `<span class="actph"><img class="rthumb" src="${esc(u.photoUrl)}" alt="" referrerpolicy="no-referrer" onerror="this.nextElementSibling.hidden=false;this.remove()"><span hidden>${tile}</span></span>` : tile) : `<div class="rthumb actgone">🏠</div>`;
     const name = (u && u.name) || a.unitName || "";
-    const attrs = u ? `data-actopen="${esc(u.id)}" data-chat="${a.kind === "comment" ? 1 : 0}"` : "disabled";
+    const attrs = a.kind === "sale" ? `data-saleopen="1"` : u ? `data-actopen="${esc(u.id)}" data-chat="${a.kind === "comment" ? 1 : 0}"` : "disabled";
     return `${dh}<button class="actrow ${isNew ? "unread" : ""}" type="button" ${attrs}>
       <span class="actdot ${esc(a.by)}"></span>${thumb}
       <span class="grow"><span class="acth">${L.head}${name ? ` · <b>${esc(name)}</b>` : ""}</span>${L.text ? `<span class="actt">${esc(L.text)}</span>` : ""}
@@ -1073,6 +1164,7 @@ function renderSheet(fresh){
   if(sheet.type === "reply") return renderReplySheet();
   if(sheet.type === "dup") return renderDupSheet();
   if(sheet.type === "activity") return renderActivitySheet();
+  if(sheet.type === "sale") return renderSaleSheet();
   const r = units.find(u => u.id === sheet.id);
   if(!r){ closeSheet(); return; }
   const st = STATUSES.includes(r.status) ? r.status : "Unviewed";
@@ -1662,6 +1754,9 @@ document.addEventListener("click", ev => {
   if(t.dataset.clwhy){ const id = t.dataset.clwhy; openWhy.has(id) ? openWhy.delete(id) : openWhy.add(id); if(sheet && sheet.type === "unit") keepScroll(renderSheet); else { const y = window.scrollY; render(); window.scrollTo(0, y); } return; }
   if(t.id === "badgeBtn"){ enableBadge(); return; }
   if(t.dataset.gotab){ tab = t.dataset.gotab; try{localStorage.setItem("hs-tab",tab);}catch(e){} render(); window.scrollTo(0,0); return; }
+  if(t.dataset.saleopen){ openSale(); return; }
+  if(t.dataset.salerm){ removeCompeting(+t.dataset.salerm); return; }
+  if(t.dataset.salemore){ sheet.all = !sheet.all; keepScroll(renderSaleSheet); return; }
   if(t.dataset.actopen){ openUnit(t.dataset.actopen, t.dataset.chat === "1"); return; }
   if(t.dataset.actf){ sheet.f = t.dataset.actf; renderActivitySheet(); return; }
   if(t.dataset.reply){ openReply(); return; }

@@ -3,6 +3,23 @@
 The scheduled research task reads this file on every run and follows it in
 addition to its own instructions. Keep it short and plain.
 
+## Our sale — every run (25 Oct 2026)
+Adrian and Shernice are selling their own flat. Its details live in Firestore `hs_meta/sale`
+(read it with `hs.get("meta","sale")`); never put the address or prices in this repo.
+On every run:
+1. WebFetch HDB's resale records (curl is blocked), newest first:
+   `https://data.gov.sg/api/action/datastore_search?resource_id=d_8b84c4ee58e3cfc0ece0d773c8ca6abc&limit=100&sort=month%20desc&filters={"town":"HOUGANG","flat_model":"Model A-Maisonette"}`
+   (URL-encode the filters). Keep only blocks listed in `sale.watchBlocks`.
+2. A record is new if no entry in `sale.comps` has the same `m`, `blk`, `storey`, `sqm`
+   and `p`. Append each new one as `{m, blk, st, storey, sqm, p, at:<UTC now>}`
+   (`st` is the short street, e.g. "Ave 1" / "St 21"). Always set `compsAt` to now.
+3. For each new record, log `hs_meta/act_<random>` with
+   `{"kind":"sale","by":"claude","unitId":"","unitName":"","text":"New sale nearby: Blk 230 · 07-09 · S$1,070k (Oct 26). <one short line on whether it moves our fair range>","actAt":<UTC now>}`.
+4. If the new sales clearly move the market, update `fairLowM/fairHighM`, `take` and `takeAt`
+   (e.g. "25 Oct 2026") and say so in the activity text. Otherwise leave them.
+5. Never change `askingM`, `competing` or `seen` — the app owns those. PropertyGuru and SRX
+   block automatic reads, so don't try to check competing listings.
+
 ## Watch list (21 Oct 2026)
 Grande Vista (Cactus Drive, 999-yr): Adrian likes the estate. On each refresh, check the
 development's listings for a **2,700 sqft 4BR ground-floor maisonette** asking about
