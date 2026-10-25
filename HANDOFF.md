@@ -27,7 +27,7 @@ _Last updated: 21 Oct 2026 by Claude (thread "Our Kovan Home", session
   plan, stack/unit number (ground-floor + PES to be confirmed), seller flexibility.
 
 ## Features shipped (all live)
-Activity feed + bell + app-icon badge · Claude's rating (green hearts, not in Top 5) ·
+Deep review box on each home (open the linked claude.ai review, ask Claude for one, or paste a link; see WORKER.md "Deep reviews") · Activity feed + bell + app-icon badge · Claude's rating (green hearts, not in Top 5) ·
 "With Andrew" box per home (ask line, conversation, his files, drop suggestions) ·
 Our chat stays private ("↗ Send to Andrew" per message) · floor plans: upload ours,
 view/zoom, "Use as floor plan" for Andrew's files (images + PDF) · Andrew's board:

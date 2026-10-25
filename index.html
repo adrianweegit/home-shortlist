@@ -452,7 +452,7 @@ function start(){
     render(); renderSheet();
   }, e => { $("app").innerHTML = `<div class="empty">Couldn't load the shortlist: ${esc(e.message)}</div>`; }));
   unsubs.push(db.collection("hs_requests").orderBy("createdAt","desc").limit(8).onSnapshot(s => {
-    reqs = s.docs.map(d => Object.assign({id:d.id}, d.data())); if(sheet && sheet.type === "add") renderSheet();
+    reqs = s.docs.map(d => Object.assign({id:d.id}, d.data())); if(sheet && (sheet.type === "add" || sheet.type === "unit")) renderSheet();
   }, ()=>{}));
   unsubs.push(db.doc("hs_meta/agent").onSnapshot(s => { const prev = agent && agent.boardToken; agent = s.exists ? s.data() : null; NAME.agent = AGENT(); if((agent && agent.boardToken) !== prev) watchBoard(); render(); }, ()=>{}));
   unsubs.push(db.doc("hs_meta/places").onSnapshot(s => { places = (s.exists && s.data().items) || []; render(); if(sheet && sheet.type === "unit") renderSheet(); }, ()=>{}));
@@ -468,7 +468,7 @@ async function save(id, data, okMsg){
 }
 
 /* ---------- App version: tell them when a newer one is published ---------- */
-const APP_VERSION = "2026-10-21T14:12+08:00"; // bump on every publish
+const APP_VERSION = "2026-10-25T12:00+08:00"; // bump on every publish
 let swReg = null, lastUpdCheck = 0, newVersion = false;
 async function checkForUpdate(force){
   if(newVersion || (!force && Date.now() - lastUpdCheck < 60000)) return;
@@ -1042,6 +1042,28 @@ function renderMsgs(){
 let sheetDirty = false;
 function editingInSheet(){ const a = document.activeElement; return !!(a && a.closest && a.closest("#sheetBody") && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)); }
 document.addEventListener("focusout", ev => { if(sheetDirty && ev.target && ev.target.closest && ev.target.closest("#sheetBody")) setTimeout(() => { if(sheetDirty && !editingInSheet()){ sheetDirty = false; if(sheet && sheet.type === "unit") keepScroll(renderSheet); } }, 150); });
+/* ---------- Deep review: Claude's full write-up of a development, opened from the unit ---------- */
+// Unit field review = {url, title, at, by}. A request is hs_requests {type:"deep", unitId, name, url}.
+const isReviewUrl = u => /^https:\/\/(preview\.)?claude\.ai\/\S+/.test(u||"");
+function reviewBox(r){
+  const rv = r.review && isReviewUrl(r.review.url) ? r.review : null;
+  const pend = reqs.find(q => q.type === "deep" && q.unitId === r.id && q.status !== "done" && q.status !== "failed");
+  const add = sheet.reviewAdd ? `<form class="addtag" id="reviewForm" style="margin-top:8px"><input id="reviewUrl" type="url" inputmode="url" placeholder="Paste the claude.ai review link" autocomplete="off" value="${esc(rv?rv.url:"")}"><button class="btn primary sm" type="submit">Save</button></form>` : "";
+  if(rv) return `<div class="box"><h4>Deep review</h4><div class="chips"><a class="btn primary sm" href="${esc(rv.url)}" target="_blank" rel="noopener">📑 Open ${esc(rv.title||"the review")} ↗</a></div>
+    <div style="font-size:12.5px;color:var(--muted);margin-top:6px">Land, developer, build quality, reviews, community, price check and questions to ask${rv.at?" · "+esc(ago(rv.at)):""}. <a href="#" id="reviewEdit">Change link</a></div>${add}</div>`;
+  return `<div class="box"><h4>Deep review</h4>${pend
+      ? `<div style="font-size:13px">📑 Requested ${esc(ago(pend.createdAt))} by ${esc(NAME[pend.by]||"")} — Claude will write it up and link it here.</div>`
+      : `<div class="chips"><button class="btn sm" type="button" id="reviewAsk">📑 Ask Claude for a deep review</button></div>
+         <div style="font-size:12.5px;color:var(--muted);margin-top:6px">A full write-up: land, developer, build quality, reviews, community, a price check against recent sales, and questions for Andrew. <a href="#" id="reviewEdit">Already have one? Add the link</a></div>`}${add}</div>`;
+}
+function bindReview(r){
+  const ask = $("reviewAsk"); if(ask) ask.onclick = async () => { try { await db.collection("hs_requests").add({type:"deep", unitId:r.id, name:r.name||"", url:r.url||"", status:"queued", createdAt:new Date().toISOString(), by:me.key}); toast("Sent to Claude"); } catch(e){ toast("Couldn't send the request"); } };
+  const ed = $("reviewEdit"); if(ed) ed.onclick = ev => { ev.preventDefault(); sheet.reviewAdd = !sheet.reviewAdd; renderSheet(); };
+  const f = $("reviewForm"); if(f) f.onsubmit = ev => { ev.preventDefault(); const u = $("reviewUrl").value.trim();
+    if(!isReviewUrl(u)){ toast("Paste the claude.ai link to the review"); return; }
+    sheet.reviewAdd = false; save(r.id, {review:{url:u, title:(r.review&&r.review.url===u&&r.review.title)||"", at:new Date().toISOString(), by:me.key}}, "Review linked"); };
+}
+
 function renderSheet(fresh){
   const root = $("sheetRoot");
   if(!sheet){ root.innerHTML = ""; return; }
@@ -1084,6 +1106,7 @@ function renderSheet(fresh){
       <dt>Format</dt><dd>${esc(r.format||"—")}</dd><dt>Beds</dt><dd>${esc(r.beds||"—")}</dd><dt>Size</dt><dd>${r.sizeSqft?Number(r.sizeSqft).toLocaleString("en-SG")+" sqft":"—"}</dd>
       <dt>From Kovan</dt><dd>${typeof r.distKm==="number"?(r.distEst?"≈":"")+r.distKm+" km":"—"}</dd><dt>MRT</dt><dd>${esc(r.mrt||"—")}${r.mrtDist?" · "+esc(r.mrtDist):""}</dd>
       <dt>Lease</dt><dd>${esc(r.lease||"—")}</dd><dt>Area</dt><dd>${esc(r.area||"—")}</dd>${r.checkedAt?`<dt>Checked</dt><dd>${esc(r.checkedAt)}</dd>`:""}</dl></details>
+    ${reviewBox(r)}
     <div class="box" style="padding-top:8px"><div class="chips">${r.url?`<a class="btn sm" href="${esc(r.url)}" target="_blank" rel="noopener">Open listing ↗</a>`:""}${hasPlan(r)?`<button class="btn sm" type="button" data-plan="${esc(r.id)}">📐 Floor plan</button>`:`<button class="btn sm" type="button" data-planadd="${esc(r.id)}">📐 Add floor plan</button>`}<a class="btn sm" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((r.name||"")+" Singapore")}" target="_blank" rel="noopener">Map ↗</a><button class="btn sm" type="button" data-dup="${esc(r.id)}">⧉ Same as…</button></div>
       ${(r.otherListings||[]).length ? `<div style="margin-top:10px;font-size:13px;color:var(--muted)">Same unit, also listed by: ${(r.otherListings||[]).map((o,i) => `<a href="${esc(o.url)}" target="_blank" rel="noopener">listing ${i+2}${typeof o.askingM==="number"?" ("+esc(money(o.askingM))+")":""} ↗</a>`).join(" · ")}</div>` : ""}</div>
     <div class="box"><h4>Claude's notes</h4>${editing ? `<form class="form" id="editForm">
@@ -1137,6 +1160,7 @@ function renderSheet(fresh){
     } catch(e){ toast("Couldn't send to " + AGENT() + " — check your connection"); } };
   const eb = $("editBtn"); if(eb) eb.onclick = () => { sheet.edit = true; sheet.confirmDel = false; renderSheet(); };
   const ce = $("cancelEdit"); if(ce) ce.onclick = () => { sheet.edit = false; renderSheet(); };
+  bindReview(r);
   const del = $("delBtn"); if(del) del.onclick = async () => { if(!sheet.confirmDel){ sheet.confirmDel = true; renderSheet(); return; } try{ await unitRef(r.id).delete(); toast("Deleted"); closeSheet(); }catch(e){ toast("Couldn't delete"); } };
   const ef = $("editForm"); if(ef) ef.onsubmit = ev => { ev.preventDefault(); const n = v => v === "" ? null : Number(v);
     save(r.id, {askingM:n($("e-ask").value), sizeSqft:n($("e-size").value), fairLowM:n($("e-flo").value), fairHighM:n($("e-fhi").value), notes:$("e-notes").value.trim()}, "Saved"); sheet.edit = false; renderSheet(); };
@@ -1145,7 +1169,7 @@ function renderSheet(fresh){
 /* ---------- Sheet: add / research ---------- */
 function renderAddSheet(){
   const last = meta && meta.lastRunAt ? `Claude last checked ${esc(ago(meta.lastRunAt))}${meta.summary?": "+esc(meta.summary):""}` : "";
-  const list = reqs.map(q => `<div class="req"><span class="pill ${q.status==="done"?"st-Offer":q.status==="failed"?"st-Rejected":"st-Booked"}">${esc(q.status||"queued")}</span><span class="grow" style="min-width:0;overflow-wrap:anywhere"><b>${q.type==="add"?"Add":q.type==="rescan"?"Rescan":"Refresh"}</b> ${q.type==="add"?esc((q.url||"").replace(/^https?:\/\/(www\.)?/,"").slice(0,60)):""} <span style="color:var(--muted)">· ${esc(NAME[q.by]||"")} ${esc(ago(q.createdAt))}</span>${q.result?`<br><span style="color:var(--muted)">${esc(q.result)}</span>`:""}</span></div>`).join("");
+  const list = reqs.map(q => `<div class="req"><span class="pill ${q.status==="done"?"st-Offer":q.status==="failed"?"st-Rejected":"st-Booked"}">${esc(q.status||"queued")}</span><span class="grow" style="min-width:0;overflow-wrap:anywhere"><b>${q.type==="add"?"Add":q.type==="rescan"?"Rescan":q.type==="deep"?"Deep review":"Refresh"}</b> ${q.type==="add"?esc((q.url||"").replace(/^https?:\/\/(www\.)?/,"").slice(0,60)):q.type==="deep"?esc(q.name||""):""} <span style="color:var(--muted)">· ${esc(NAME[q.by]||"")} ${esc(ago(q.createdAt))}</span>${q.result?`<br><span style="color:var(--muted)">${esc(q.result)}</span>`:""}</span></div>`).join("");
   $("sheetRoot").innerHTML = `<div class="scrim" id="scrim"></div><div class="sheet" role="dialog" aria-modal="true" aria-label="Find homes">
     <div class="hd"><h3>Find more homes</h3><button class="close" id="closeSheet" type="button" aria-label="Close">×</button></div>
     <div class="sc"><div class="box"><h4>Add from a listing link</h4>

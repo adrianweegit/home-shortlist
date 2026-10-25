@@ -242,3 +242,32 @@ Don't rate Rejected units. Weigh, most important first:
 6. Estate quality and upkeep; big-developer overhang or thin sales count against.
 7. What they like: an open view like Riverfront's, dual-key for parents later, near Kovan.
 Their viewing notes (comments and "Viewed:" concerns) override listing claims.
+
+## Deep reviews (25 Oct 2026)
+The app's home details have a **Deep review** box. Tapping "Ask Claude for a deep review"
+creates `hs_requests {type:"deep", unitId, name, url}`. A finished review is linked on the
+unit as `review: {url, title, at, by:"claude"}` (a claude.ai doc link; the app only opens
+`https://claude.ai/…` links).
+
+- **Group by format:** penthouses go in a penthouse comparison doc, ground-floor units in a
+  ground-floor comparison doc (Adrian's choice). Two to three units per doc, one doc per pair
+  of developments; every unit in a doc gets the same `review.url`.
+- **What a review covers, per development:** land (tenure, lease start and years left, site,
+  plot ratio, land sale or en bloc and price psf ppr, zoning, flooding on PUB's list, road and
+  air-base noise); developer and its parent, contractor, architect; build quality (CONQUAS,
+  defects, forum threads); reviews; community (owner vs rental share, MCST disputes,
+  maintenance fee, en bloc talk); schools and MRT.
+- **Per unit:** layout vs the layout rules above, the indoor area vs PES or roof terrace from
+  the floor-plan type, URA-based sales of the same and similar types, a fair-value range, any
+  unapproved structures, and a viewing checklist.
+- **Accuracy:** open every page a number comes from, cite it in the doc, mark each fact
+  High / Med / Low, write "not found" rather than guess. Lead the doc with a bottom-line
+  table and the next step.
+- **No docs tools in this run?** Leave the request `queued`, set `result` to "Waiting for
+  Adrian to run it in chat", and log one activity item. Adrian will run it in a chat thread.
+- When done: set the unit's `review` and `fairLowM/fairHighM` if they changed, mark the
+  request `done` with a one-line `result`, and log an activity item.
+
+Done so far: NIN Residence PH + Bliss@Kovan 2A and 6B PHs
+(https://claude.ai/artifact/JPfaeYjzcgYB2N6dhK9zFM); Kovan Residences 5A GF +
+Tangerine Grove 3 PLC GF (https://claude.ai/artifact/Sp7goLTWJgLnfscwiDVNki).

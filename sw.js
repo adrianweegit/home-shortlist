@@ -1,6 +1,6 @@
 // Caches the app shell so the home-screen app opens instantly and offline.
 // Data comes from Firestore, which keeps its own offline copy.
-const CACHE = "home-shortlist-v2";
+const CACHE = "home-shortlist-v3";
 const SHELL = ["./", "index.html", "config.js", "manifest.webmanifest", "icon-192.png", "icon-512.png", "apple-touch-icon.png"];
 
 self.addEventListener("install", e => {
