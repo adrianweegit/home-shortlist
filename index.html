@@ -488,7 +488,7 @@ async function save(id, data, okMsg){
 }
 
 /* ---------- App version: tell them when a newer one is published ---------- */
-const APP_VERSION = "2026-10-25T13:10+08:00"; // bump on every publish
+const APP_VERSION = "2026-10-25T13:20+08:00"; // bump on every publish
 let swReg = null, lastUpdCheck = 0, newVersion = false;
 async function checkForUpdate(force){
   if(newVersion || (!force && Date.now() - lastUpdCheck < 60000)) return;
@@ -948,9 +948,9 @@ function moneyBox(r){
     ${row("Sale cash covers", f.leftAfter >= 0 ? `All of it — ${esc(kS(f.leftAfter))} to spare` : `${esc(kS(f.sc.cash))} — <b>${esc(kS(-f.leftAfter))} from savings</b>`, f.leftAfter >= 0 ? "" : "warn")}
     ${row("Mortgage", `${esc(mo(f.mort))}/mo at ${(f.rate*100).toFixed(1)}% <span class="muted">· ${esc(mo(f.low))} at 2% · ${esc(mo(f.stress))} at 4%</span>`)}
     ${row("CPF pays", `${esc(mo(f.cpfMo))}/mo <span class="muted">from monthly contributions</span>`)}
-    ${row("Cash each month", `<b>${esc(mo(f.monthly))}</b> <span class="muted">= mortgage ${esc(mo(f.cashMort))} + car ${esc(mo(m.car||0))} + condo ${esc(mo(f.condo))}${m.takeHome ? " · " + Math.round(f.monthly/m.takeHome*100) + "% of take-home" : ""}</span>`)}
+    ${row("Cash each month", `<b>${esc(mo(f.monthly))}</b> <span class="muted">= mortgage ${esc(mo(f.cashMort))}${m.car ? " + car " + esc(mo(m.car)) : ""} + condo ${esc(mo(f.condo))}${m.takeHome ? " · " + Math.round(f.monthly/m.takeHome*100) + "% of take-home" : ""}</span>`)}
     ${f.runwayYrs ? row("CPF left could", `cover the cash part of the mortgage for ~${f.runwayYrs.toFixed(1)} yrs`) : ""}
-    ${f.tdsr !== null ? row("Bank's 55% test", `${Math.round(f.tdsr*100)}% of income at 4% (incl. car) — ${f.tdsr <= .55 ? "passes" : "<b class='warn'>fails</b>"}`) : ""}</table>
+    ${f.tdsr !== null ? row("Bank's 55% test", `${Math.round(f.tdsr*100)}% of income at 4%${m.car ? " (incl. car)" : ""} — ${f.tdsr <= .55 ? "passes" : "<b class='warn'>fails</b>"}`) : ""}</table>
     ${fv ? `<div style="font-size:13px;margin-top:8px">At mid fair value ${esc(money(fv.P/1e6))}: ${fv.extra > 0 ? esc(kS(fv.extra)) + " from savings" : "no savings needed"} · ${esc(mo(fv.monthly))}/mo · CPF left ${esc(kS(fv.cpfLeft))}</div>` : ""}
     <div class="muted" style="font-size:12px;margin-top:6px">Our flat sold at ${esc(fmtM(f.sc.S.v/1e6))} (${esc(f.sc.S.lbl)}), selling first so no ABSD. Change it on the Our sale tab. Excludes household spending and income tax.</div></div>`;
 }
