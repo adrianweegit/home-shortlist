@@ -253,6 +253,9 @@ table.cmp{border-collapse:collapse;width:100%;min-width:520px;font-size:13px}
 .cmpbar{position:fixed;left:max(12px,env(safe-area-inset-left,0px));right:86px;bottom:calc(env(safe-area-inset-bottom,0px) + 76px);display:flex;align-items:center;gap:8px;background:var(--paper);border-radius:14px;box-shadow:var(--shadow);padding:8px 10px;font-size:13px;z-index:19;max-width:620px}
 .cmpbar .grow{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tabic{position:relative;display:inline-flex}.tbdg{position:absolute;top:-4px;right:-10px;min-width:16px;height:16px;border-radius:99px;background:var(--rose);color:#fff;font-size:10px;font-weight:700;line-height:16px;text-align:center;padding:0 4px}
+/* Our money */
+.mline{font-size:13px;margin-top:8px;padding:6px 10px;border-radius:10px;background:var(--bg)}.mline .warn,.mtab .warn,.warn{color:var(--rose)}
+table.mtab{width:100%;border-collapse:collapse;font-size:13.5px}.mtab th{font-weight:600;color:var(--muted);text-align:left;padding:5px 8px 5px 0;width:38%;vertical-align:top}.mtab td{padding:5px 0;border-bottom:1px solid var(--line)}
 /* Our sale card + sheet */
 .salecard{border:2px solid var(--kaya-soft);margin-bottom:12px}.salecard .body{padding-top:12px}
 .sale-hd{display:flex;align-items:center;gap:8px;font-size:13px}.salecard h3{font-family:var(--f-display);font-size:18px}.salecard .sub{font-size:13px;color:var(--muted)}
@@ -372,6 +375,7 @@ let comments = [];
 let acts = [];              // activity feed (hs_meta docs with actAt)
 let actRead = {};           // {adrian: ISO, shernice: ISO} — last time each opened Activity
 let unsubs = [];
+let money_ = null;          // hs_meta/money — our finances (private; never on the board)
 let sale = null;            // hs_meta/sale — selling our own flat (see viewSale)
 try{ const t = localStorage.getItem("hs-tab"); if(t) tab = t === "cmp" ? "homes" : t; const c = JSON.parse(localStorage.getItem("hs-cmp")||"[]"); if(Array.isArray(c)) compare = c.slice(0,3); }catch(e){}
 
@@ -471,6 +475,7 @@ function start(){
   unsubs.push(db.doc("hs_meta/places").onSnapshot(s => { places = (s.exists && s.data().items) || []; render(); if(sheet && sheet.type === "unit") renderSheet(); }, ()=>{}));
   unsubs.push(db.collection("hs_meta").orderBy("actAt","desc").limit(150).onSnapshot(s => { acts = s.docs.map(d => Object.assign({id:d.id}, d.data())); render(); if(sheet && sheet.type === "activity") renderActivitySheet(); }, ()=>{}));
   unsubs.push(db.doc("hs_meta/actread").onSnapshot(s => { actRead = s.exists ? s.data() : {}; render(); }, ()=>{}));
+  unsubs.push(db.doc("hs_meta/money").onSnapshot(s => { money_ = s.exists ? s.data() : null; const ae = document.activeElement; if(ae && ae.closest && ae.closest("#moneyForm")) return; const y = window.scrollY; render(); window.scrollTo(0, y); if(sheet && sheet.type === "unit") keepScroll(renderSheet); }, ()=>{}));
   unsubs.push(db.doc("hs_meta/sale").onSnapshot(s => { sale = s.exists ? s.data() : null; if(tab === "sale" && !saleSince && sale && sale.seen) saleSince = sale.seen[me.key] || "";
     const ae = document.activeElement; if(tab === "sale" && ae && ae.closest && ae.closest("#salePage") && ae.tagName === "INPUT") return; const y = window.scrollY; render(); window.scrollTo(0, y); }, ()=>{}));
   unsubs.push(db.doc("hs_meta/worker").onSnapshot(s => { meta = s.exists ? s.data() : null; if(sheet && sheet.type === "add") renderSheet(); }, ()=>{}));
@@ -589,6 +594,7 @@ function card(r){
     <div class="body">
       <div class="money"><span class="ask ${r.askingM>budgetOf(r)?"over":""}">${esc(money(r.askingM))}</span><span class="fair">fair ${esc(fairTxt(r))}</span></div>
       ${bar(r)}
+      ${moneyLine(r)}
       <div class="chips"><span class="chip fact">${esc(r.beds||"")}</span>${r.sizeSqft?`<span class="chip fact">${Number(r.sizeSqft).toLocaleString("en-SG")} sqft</span>`:""}<span class="chip fact">🚇 ${esc(r.mrt||"—")}${r.mrtDist?" · "+esc(r.mrtDist):""}</span>${shuttleChip(r)}<span class="chip fact">⏳ ${esc(r.lease||"—")}</span><span class="chip fact">${esc(r.format||"")}</span></div>
       ${tripChips(r)}
       ${loves||concerns ? `<div class="chips">${loves}${concerns}</div>` : ""}
@@ -796,7 +802,7 @@ function viewCompare(){
   const sel = compare.map(id => units.find(u => u.id === id)).filter(Boolean);
   if(sel.length < 2) return `<h2 class="sec">Compare</h2><div class="empty">Tap <b>Compare</b> on 2 or 3 homes in the Homes tab, then come back here.${sel.length?`<br><br>Picked so far: <b>${esc(sel[0].name)}</b>`:""}</div>`;
   const rows = [
-    ["Asking", u => money(u.askingM)], ["Fair value", u => fairTxt(u)], ["Format", u => u.format], ["Beds", u => u.beds], ["Size", u => u.sizeSqft ? Number(u.sizeSqft).toLocaleString("en-SG")+" sqft" : "—"],
+    ["Asking", u => money(u.askingM)], ["Fair value", u => fairTxt(u)], ...(money_ ? [["Extra cash", u => { const f = fin(u.askingM, u); return f ? kS(f.extra) : "—"; }], ["Cash / month", u => { const f = fin(u.askingM, u); return f ? mo(f.monthly) : "—"; }], ["CPF left", u => { const f = fin(u.askingM, u); return f ? kS(f.cpfLeft) : "—"; }]] : []), ["Format", u => u.format], ["Beds", u => u.beds], ["Size", u => u.sizeSqft ? Number(u.sizeSqft).toLocaleString("en-SG")+" sqft" : "—"],
     ["From Kovan", u => typeof u.distKm==="number" ? u.distKm.toFixed(1)+" km" : "—"], ["MRT", u => (u.mrt||"—") + (u.mrtDist?" · "+u.mrtDist:"")], ["Lease", u => u.lease],
     ...KEYS.map(k => [NAME[k] + " ♥", u => "♥".repeat(ratingOf(u,k)) || "—"]), ["Status", u => STATUS_LABEL[u.status] || u.status],
     ...places.map(p => [(p.emoji||"") + " " + (p.short||p.label), u => { const t = tripOf(u,p.key); return t ? `≈${t.min} min · ${RATE_LABEL[t.rating]||t.rating}${t.xfers?` · ${t.xfers} change${t.xfers>1?"s":""}`:""}` : "—"; }]),
@@ -858,6 +864,7 @@ function viewSale(){
         ${typeof s.bankLowM==="number" ? `<div style="font-size:13px;margin-top:6px">Bank check: <b>${esc(fmtM(s.bankLowM))}–${esc(fmtM(s.bankHighM).replace("S$",""))}</b>${typeof s.askingM==="number" ? ` <span class="muted">· a buyer at our asking pays about ${esc(kS((s.askingM-s.bankHighM)*1e6))}–${esc(kS((s.askingM-s.bankLowM)*1e6))} in cash over valuation</span>` : ""}</div>` : ""}
         <form class="addtag" id="askForm" style="margin-top:10px"><input id="askIn" inputmode="decimal" placeholder="Changed the asking price? e.g. 1.098" autocomplete="off"><button class="btn sm" type="submit">Update</button></form>
         ${s.listingUrl ? `<div class="chips" style="margin-top:8px"><a class="btn sm" href="${esc(s.listingUrl)}" target="_blank" rel="noopener">Our listing ↗</a></div>` : ""}</div>
+      ${moneyPanel()}
       ${s.take ? `<div class="box"><h4>Claude's take</h4><div style="font-size:14px">${esc(s.take)}</div>${s.takeAt ? `<div class="muted" style="font-size:12px;margin-top:4px">${esc(s.takeAt)}</div>` : ""}</div>` : ""}
       ${(s.up||[]).length || (s.down||[]).length ? `<div class="box"><h4>What helps · what hurts</h4><div class="updown"><div><b style="color:var(--pandan)">Helps</b><ul>${li(s.up)}</ul></div><div><b style="color:var(--rose)">Hurts</b><ul>${li(s.down)}</ul></div></div></div>` : ""}
       <div class="box"><h4>Nearby sales <span style="text-transform:none;letter-spacing:0;font-weight:400">· same flat type, HDB records</span></h4>
@@ -870,6 +877,7 @@ function viewSale(){
         <p style="font-size:12px;color:var(--muted);margin:8px 0 0">Listing sites block Claude's automatic checks, so paste the ones you or ${esc(AGENT())} spot here.</p></div></div>`;
 }
 function bindSale(){
+  bindMoney();
   if(!$("askForm")) return;
   const s = sale;
   $("askForm").onsubmit = async ev => { ev.preventDefault(); const v = parseMoney($("askIn").value); if(!v || v < 0.3 || v > 3){ toast("Type the price in millions, e.g. 1.098"); return; }
@@ -882,6 +890,107 @@ function bindSale(){
 async function removeCompeting(n){
   const c = ((sale && sale.competing) || [])[n-1]; if(!c) return;
   try { await saleRef().update({competing: FV.arrayRemove(c)}); toast("Removed"); } catch(e){ toast("Couldn't remove — check your connection"); }
+}
+
+/* ---------- Our money: what each home needs in cash, CPF and per month ----------
+   Mirrors Adrian's "House Upgrade Financing Model" (Oct 2026). Inputs live in hs_meta/money;
+   the HDB sale price comes from the Our sale page (money.saleBasis: fair | asking | custom). */
+const mo = v => "S$" + Math.round(v).toLocaleString("en-SG");
+function bsd(P){ // IRAS buyer's stamp duty, residential (2023 rates)
+  const T = [[180000,.01],[180000,.02],[640000,.03],[500000,.04],[1500000,.05],[Infinity,.06]];
+  let left = P, d = 0; for(const [w, r] of T){ const x = Math.min(left, w); d += x*r; left -= x; if(left <= 0) break; } return Math.round(d);
+}
+const pmt = (L, rate, yrs) => rate ? L*(rate/12)/(1-Math.pow(1+rate/12, -yrs*12)) : L/(yrs*12);
+function salePriceUsed(){
+  const m = money_ || {}, s = sale || {};
+  if(m.saleBasis === "asking" && typeof s.askingM === "number") return {v:s.askingM*1e6, lbl:"our asking"};
+  if(m.saleBasis === "custom" && m.saleCustom) return {v:m.saleCustom, lbl:"your figure"};
+  if(typeof s.fairLowM === "number") return {v:(s.fairLowM + s.fairHighM)/2*1e6, lbl:"mid fair value"};
+  return {v:m.saleCustom || 1e6, lbl:"your figure"};
+}
+function saleCash(){
+  const m = money_; if(!m) return null;
+  const S = salePriceUsed(), fee = S.v*(m.agentPct||0)*(1+(m.gst||0));
+  const net = S.v - fee - (m.saleCosts||0), refund = m.cpfRefund||0;
+  return {S, fee, net, refund, cash: net - refund, oa: (m.oaNow||0) + refund};
+}
+function fin(priceM, u){
+  const m = money_; if(!m || typeof priceM !== "number") return null;
+  const sc = saleCash(), P = priceM*1e6, rate = m.rate ?? .025;
+  const loan = Math.min(m.loanCap||1.6e6, P*(m.ltv||.75)), tenure = m.tenure||18;
+  const mand = P*(m.minCashPct||.05), duty = bsd(P);
+  const cpfNeed = P - loan - mand + duty, cpfUsed = Math.min(sc.oa, cpfNeed), cpfLeft = Math.max(0, sc.oa - cpfNeed), shortfall = Math.max(0, cpfNeed - sc.oa);
+  const fit = (m.reno||0) + (m.moving||0) + (m.legal||0) + (m.buyerAgent||0);
+  const cashNeed = mand + shortfall + fit, extra = Math.max(0, cashNeed - sc.cash);
+  const mort = pmt(loan, rate, tenure), cpfMo = Math.min(m.oaMonthly||0, mort), cashMort = mort - cpfMo;
+  const condo = (u && typeof u.mcstMonthly === "number" ? u.mcstMonthly : (m.maint||0)) + (m.ptax||0) + (m.reserve||0);
+  const monthly = cashMort + (m.car||0) + condo;
+  const stress = pmt(loan, m.rateStress||.04, tenure), tdsr = m.income ? (stress + (m.car||0)) / m.income : null;
+  const leftAfter = sc.cash - cashNeed; // + = cash from the sale left over; - = from savings
+  return {P, loan, tenure, rate, mand, duty, cpfNeed, cpfUsed, cpfLeft, shortfall, fit, cashNeed, extra, leftAfter, mort, cpfMo, cashMort, condo, monthly, stress, tdsr,
+    low: pmt(loan, m.rateLow||.02, tenure), runwayYrs: cashMort > 0 ? cpfLeft / cashMort / 12 : null, sc};
+}
+function moneyLine(r){
+  const f = fin(r.askingM, r); if(!f) return "";
+  const m = money_, reno = m.reno||0;
+  const cash = f.extra <= 0 ? `<b>No savings needed</b>` : f.extra <= reno ? `<b>${esc(kS(f.extra))}</b> from savings <span class="muted">(within reno)</span>` : `<b class="warn">${esc(kS(f.extra))}</b> from savings`;
+  return `<div class="mline">💵 ${cash} · <b>${esc(mo(f.monthly))}</b>/mo · CPF left ${esc(kS(f.cpfLeft))}</div>`;
+}
+function moneyBox(r){
+  const f = fin(r.askingM, r); if(!f) return "";
+  const m = money_, fv = typeof r.fairLowM === "number" ? fin((r.fairLowM + r.fairHighM)/2, r) : null;
+  const row = (l, v, cls) => `<tr><th>${l}</th><td class="${cls||""}">${v}</td></tr>`;
+  return `<div class="box"><h4>Our money · at asking ${esc(money(r.askingM))}</h4>
+    <table class="mtab">${row("Loan", `${esc(kS(f.loan))} · ${f.tenure} yrs · ${Math.round(f.loan/f.P*100)}% of price`)}
+    ${row("Stamp duty", esc(kS(f.duty)))}
+    ${row("CPF used", `${esc(kS(f.cpfUsed))} <span class="muted">· ${esc(kS(f.cpfLeft))} left</span>`)}
+    ${row("Cash needed", `${esc(kS(f.cashNeed))} <span class="muted">(5% down ${esc(kS(f.mand))}${f.shortfall ? " + CPF shortfall " + esc(kS(f.shortfall)) : ""} + reno &amp; fees ${esc(kS(f.fit))})</span>`)}
+    ${row("Sale cash covers", f.leftAfter >= 0 ? `All of it — ${esc(kS(f.leftAfter))} to spare` : `${esc(kS(f.sc.cash))} — <b>${esc(kS(-f.leftAfter))} from savings</b>`, f.leftAfter >= 0 ? "" : "warn")}
+    ${row("Mortgage", `${esc(mo(f.mort))}/mo at ${(f.rate*100).toFixed(1)}% <span class="muted">· ${esc(mo(f.low))} at 2% · ${esc(mo(f.stress))} at 4%</span>`)}
+    ${row("CPF pays", `${esc(mo(f.cpfMo))}/mo <span class="muted">from monthly contributions</span>`)}
+    ${row("Cash each month", `<b>${esc(mo(f.monthly))}</b> <span class="muted">= mortgage ${esc(mo(f.cashMort))} + car ${esc(mo(m.car||0))} + condo ${esc(mo(f.condo))}${m.takeHome ? " · " + Math.round(f.monthly/m.takeHome*100) + "% of take-home" : ""}</span>`)}
+    ${f.runwayYrs ? row("CPF left could", `cover the cash part of the mortgage for ~${f.runwayYrs.toFixed(1)} yrs`) : ""}
+    ${f.tdsr !== null ? row("Bank's 55% test", `${Math.round(f.tdsr*100)}% of income at 4% (incl. car) — ${f.tdsr <= .55 ? "passes" : "<b class='warn'>fails</b>"}`) : ""}</table>
+    ${fv ? `<div style="font-size:13px;margin-top:8px">At mid fair value ${esc(money(fv.P/1e6))}: ${fv.extra > 0 ? esc(kS(fv.extra)) + " from savings" : "no savings needed"} · ${esc(mo(fv.monthly))}/mo · CPF left ${esc(kS(fv.cpfLeft))}</div>` : ""}
+    <div class="muted" style="font-size:12px;margin-top:6px">Our flat sold at ${esc(fmtM(f.sc.S.v/1e6))} (${esc(f.sc.S.lbl)}), selling first so no ABSD. Change it on the Our sale tab. Excludes household spending and income tax.</div></div>`;
+}
+function moneyPanel(){
+  const m = money_; if(!m) return "";
+  const sc = saleCash(), basis = m.saleBasis || "fair";
+  const inPlayHomes = units.filter(u => inPlay(u) && typeof u.askingM === "number");
+  const ok = inPlayHomes.filter(u => { const f = fin(u.askingM, u); return f && f.extra <= (m.reno||0); }).length;
+  const opt = (v, l) => `<option value="${v}" ${basis === v ? "selected" : ""}>${l}</option>`;
+  return `<div class="box" id="moneyBox"><h4>Our money</h4>
+    <table class="mtab"><tr><th>Sale price used</th><td><b>${esc(fmtM(sc.S.v/1e6))}</b> <span class="muted">(${esc(sc.S.lbl)})</span></td></tr>
+    <tr><th>After agent &amp; costs</th><td>${esc(kS(sc.net))}</td></tr>
+    <tr><th>Back to CPF</th><td>${esc(kS(sc.refund))} <span class="muted">· CPF after sale ${esc(kS(sc.oa))}</span></td></tr>
+    <tr><th>Cash from the sale</th><td><b>${esc(kS(sc.cash))}</b></td></tr>
+    <tr><th>Homes in play</th><td>${ok} of ${inPlayHomes.length} need no savings beyond the reno budget</td></tr></table>
+    <details style="margin-top:8px"><summary style="cursor:pointer;font-size:13px;color:var(--muted)">Change assumptions</summary>
+    <form class="form" id="moneyForm" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+      <label class="w" style="grid-column:1/-1">Our flat sells at<select id="mBasis">${opt("fair","Mid fair value")}${opt("asking","Our asking price")}${opt("custom","My own figure ↓")}</select></label>
+      <label class="w">Own figure (S$M)<input id="mCustom" inputmode="decimal" value="${m.saleCustom ? (m.saleCustom/1e6) : ""}" placeholder="e.g. 1.0"></label>
+      <label class="w">Base rate %<input id="mRate" inputmode="decimal" value="${((m.rate ?? .025)*100).toFixed(2).replace(/\.?0+$/,"")}"></label>
+      <label class="w">Loan cap (S$M)<input id="mCap" inputmode="decimal" value="${(m.loanCap||1.6e6)/1e6}"></label>
+      <label class="w">Tenure (yrs)<input id="mTen" inputmode="numeric" value="${m.tenure||18}"></label>
+      <label class="w">Renovation (S$k)<input id="mReno" inputmode="numeric" value="${Math.round((m.reno||0)/1000)}"></label>
+      <label class="w">Car / month (S$)<input id="mCar" inputmode="numeric" value="${m.car||0}"></label>
+      <button class="btn primary sm" type="submit" style="grid-column:1/-1">Save</button></form></details>
+    <div class="muted" style="font-size:12px;margin-top:6px">From your financing model (${esc(m.source||"Oct 2026")}). Selling first, so no ABSD. Each home's card shows cash from savings, cash per month and CPF left.</div></div>`;
+}
+function bindMoney(){
+  const f = $("moneyForm"); if(!f) return;
+  f.onsubmit = async ev => { ev.preventDefault();
+    const num = id => { const v = parseFloat(String($(id).value).replace(/[,S$\s]/gi,"")); return isNaN(v) ? null : v; };
+    const upd = {saleBasis: $("mBasis").value}, c = num("mCustom"), r = num("mRate"), cap = num("mCap"), t = num("mTen"), rn = num("mReno"), car = num("mCar");
+    if(c !== null) upd.saleCustom = c < 10 ? Math.round(c*1e6) : c;
+    if(r !== null && r > 0 && r < 15) upd.rate = r/100;
+    if(cap !== null && cap > 0) upd.loanCap = cap < 10 ? Math.round(cap*1e6) : cap;
+    if(t !== null && t >= 5 && t <= 35) upd.tenure = Math.round(t);
+    if(rn !== null) upd.reno = Math.round(rn*1000);
+    if(car !== null) upd.car = car;
+    upd.updatedAt = new Date().toISOString(); upd.updatedBy = me.key;
+    try { await db.doc("hs_meta/money").set(upd, {merge:true}); toast("Saved — every home's figures updated"); } catch(e){ toast("Couldn't save — check your connection"); } };
 }
 
 /* Where a home stands on Andrew's board, for its card. */
@@ -1196,6 +1305,7 @@ function renderSheet(fresh){
       ${r.fairBasis?`<div style="font-size:12.5px;color:var(--muted);margin-top:4px">Fair value basis: ${esc(r.fairBasis)}</div>`:""}
       <div style="margin-top:10px">${bar(r)}</div>
       <div class="hearts" style="margin-top:12px">${KEYS.map(k => heartsRow(r,k)).join("")}${claudeRow(r)}</div></div>
+    ${moneyBox(r)}
     ${andrewBox(r)}
     <div class="box"><h4>Viewing</h4>
       <div class="form"><label class="w">Status<select id="stSel">${STATUSES.map(s => `<option value="${s}" ${s===st?"selected":""}>${esc(STATUS_LABEL[s])}</option>`).join("")}</select></label>
