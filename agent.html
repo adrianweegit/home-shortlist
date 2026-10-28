@@ -88,6 +88,7 @@ textarea{min-height:70px;resize:vertical}
 .dropui .opt{padding:7px 10px}
 .dropui input{width:100%;box-sizing:border-box}
 .slotbtn{margin-top:10px;width:100%;padding:10px;border-radius:12px;border:1px dashed currentColor;background:none;font:inherit;font-weight:600;color:inherit;cursor:pointer}
+.revisit{background:#E3ECF7;color:#24324a;border-radius:10px;padding:8px 10px;margin-top:8px;font-size:14px}
 </style>
 </head>
 <body>
@@ -179,6 +180,7 @@ const commit = (fields, mask, transforms, keepalive) => call(`${BASE}:commit?key
 
 const SECTIONS = [["new","Needs a viewing time","New homes, or ones still to be scheduled"],["upcoming","Upcoming viewings",""],["offer","Offers","Our offers and the seller's response"],["viewed","Viewed","Share anything new after the viewing"],["closed","Closed","No need to follow up"]];
 const STATES = [["confirmed","✅ Confirmed"],["pending","⏳ Checking"],["sold","🏷️ Sold"]];
+const ord = n => n + (n % 10 === 1 && n % 100 !== 11 ? "st" : n % 10 === 2 && n % 100 !== 12 ? "nd" : n % 10 === 3 && n % 100 !== 13 ? "rd" : "th");
 let viewOpen = new Set(), availOpen = false;
 let B = null, state = {}, lastSeen = 0, dirty = false, suggestDraft = {url:"", note:""}, slotOpen = false;
 function wireSlots(){
@@ -201,7 +203,8 @@ call(`${BASE}/hs_board/${token}?key=${FB.apiKey}`).then(async r => {
   lastSeen = B.agentSeenAt ? B.agentSeenAt.getTime() : 0;
   const R = B.replies || {};
   Object.keys(B.items || {}).forEach(id => { const p = R[id] || {}, it = B.items[id], up = it.status === "upcoming" && it.appt;
-    state[id] = {state: up ? "confirmed" : (p.state || "pending"), appt: up ? it.appt : (p.appt || ""), view: p.view || "", counter: p.counter || null, msgs: (p.msgs || []).slice(), drop: p.drop || null, draft: ""}; });
+    const stale = it.revisit && it.status === "new" && p.appt && new Date(p.appt) < new Date(it.revisit.at); // old time from an earlier viewing
+    state[id] = {state: up ? "confirmed" : stale ? "pending" : (p.state || "pending"), appt: up ? it.appt : stale ? "" : (p.appt || ""), view: p.view || "", counter: p.counter || null, msgs: (p.msgs || []).slice(), drop: p.drop || null, draft: ""}; });
   render(); $("bar").hidden = false; $("msg").innerHTML = `<span class="meta">${PREVIEW ? "Preview — taps here aren't saved." : "Everything you change saves by itself."}</span>`;
   if(!PREVIEW) commit({}, [], ["agentSeenAt"]).catch(() => {}); // mark this visit (not when we preview it)
 }).catch(e => {
@@ -317,6 +320,7 @@ function card(id, it){
     <h3>${esc(it.name)}${it.priority === "top" && live ? `<span class="prio">🔥 Top of mind</span>` : ""}${newFrom(it).length ? `<span class="prio newc">💬 New from ${esc([...new Set(newFrom(it).map(m => m.name || "them"))].join(" & "))}</span>` : ""}</h3>
     <div class="meta">${esc(it.area||"")}${it.url?` · <a href="${esc(it.url)}" target="_blank" rel="noopener">Listing ↗</a>`:""}${it.status==="upcoming"&&it.appt?` · <b>${esc(fmtWhen(it.appt))}</b>`:""}${it.status==="closed"?` · ${esc(it.closedReason||"")}`:""}</div>
     ${it.spec ? `<div class="spec">${esc(it.spec)}</div>` : ""}
+    ${it.revisit && live && (it.status === "new" || it.status === "upcoming") ? `<div class="revisit">🔁 <b>${esc(ord(it.revisit.n || 2))} viewing</b>${it.status === "new" ? " — please pick a time from our free times" : ""}${it.revisit.note ? `<div>“${esc(it.revisit.note)}”</div>` : ""}</div>` : ""}
     ${ch && it.changeNote ? `<div class="chg">🔔 ${esc(it.changeNote)}</div>` : ""}
     ${it.status === "offer" || it.ourOffer ? offerBlock(id, it) : ""}
     ${it.status === "viewed" ? `<div class="meta" style="margin-top:8px">Viewed ${it.appt ? esc(fmtWhen(it.appt)) : ""}${st.state === "sold" ? ` · <b>marked sold</b> <button class="linkbtn" type="button" data-st="${esc(id)}" data-stv="pending">undo</button>` : ` · <button class="linkbtn" type="button" data-st="${esc(id)}" data-stv="sold">🏷️ Mark as sold</button>`}</div>` : ""}

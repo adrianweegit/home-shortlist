@@ -253,6 +253,7 @@ table.cmp{border-collapse:collapse;width:100%;min-width:520px;font-size:13px}
 .cmpbar{position:fixed;left:max(12px,env(safe-area-inset-left,0px));right:86px;bottom:calc(env(safe-area-inset-bottom,0px) + 76px);display:flex;align-items:center;gap:8px;background:var(--paper);border-radius:14px;box-shadow:var(--shadow);padding:8px 10px;font-size:13px;z-index:19;max-width:620px}
 .cmpbar .grow{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tabic{position:relative;display:inline-flex}.tbdg{position:absolute;top:-4px;right:-10px;min-width:16px;height:16px;border-radius:99px;background:var(--rose);color:#fff;font-size:10px;font-weight:700;line-height:16px;text-align:center;padding:0 4px}
+.revisit{background:var(--sky-soft);border-radius:12px;padding:10px 12px;margin:0 0 10px;font-size:14px}
 /* Our money */
 .mline{font-size:13px;margin-top:8px;padding:6px 10px;border-radius:10px;background:var(--bg)}.mline .warn,.mtab .warn,.warn{color:var(--rose)}
 table.mtab{width:100%;border-collapse:collapse;font-size:13.5px}.mtab th{font-weight:600;color:var(--muted);text-align:left;padding:5px 8px 5px 0;width:38%;vertical-align:top}.mtab td{padding:5px 0;border-bottom:1px solid var(--line)}
@@ -488,7 +489,7 @@ async function save(id, data, okMsg){
 }
 
 /* ---------- App version: tell them when a newer one is published ---------- */
-const APP_VERSION = "2026-10-25T13:20+08:00"; // bump on every publish
+const APP_VERSION = "2026-10-28T22:50+08:00"; // bump on every publish
 let swReg = null, lastUpdCheck = 0, newVersion = false;
 async function checkForUpdate(force){
   if(newVersion || (!force && Date.now() - lastUpdCheck < 60000)) return;
@@ -589,7 +590,7 @@ function card(r){
     <div class="hero">${r.photoUrl ? `<div class="pic ${k}">${pic(k)}</div>` : devTile(r)}<div class="ttl">
       <h3>${esc(r.name)}</h3><div class="sub">${esc(r.area||"")}</div>${r.isNew && !isNewFor(r,me.key) && isNewFor(r,partnerOf(me.key)) && r.status!=="Rejected" ? `<div class="hint">👀 ${esc(NAME[partnerOf(me.key)])} hasn't looked yet</div>` : ""}${updatedFor(r,me.key)&&r.updateNote?`<div class="hint upd">↻ ${esc(r.updateNote)}</div>`:""}
       ${boardLine(r)}
-      <div class="row"><span class="dist">${typeof r.distKm==="number"?(r.distEst?"≈":"")+r.distKm.toFixed(r.distKm<1?2:1)+" km":"—"} from Kovan</span><span class="pill st-${st}">${esc(STATUS_LABEL[st])}</span>${isNewFor(r,me.key)?`<span class="pill new">New</span>`:updatedFor(r,me.key)?`<span class="pill upd" title="${esc(r.updateNote||"")}">Updated</span>`:""}${r.listingState&&r.listingState!=="Live"?`<span class="pill st-Booked">${esc(r.listingState)}</span>`:""}</div>
+      <div class="row"><span class="dist">${typeof r.distKm==="number"?(r.distEst?"≈":"")+r.distKm.toFixed(r.distKm<1?2:1)+" km":"—"} from Kovan</span><span class="pill st-${st}">${esc(STATUS_LABEL[st])}</span>${isNewFor(r,me.key)?`<span class="pill new">New</span>`:updatedFor(r,me.key)?`<span class="pill upd" title="${esc(r.updateNote||"")}">Updated</span>`:""}${r.listingState&&r.listingState!=="Live"?`<span class="pill st-Booked">${esc(r.listingState)}</span>`:""}${timesViewed(r) >= 2 ? `<span class="pill st-Viewed">Viewed ${timesViewed(r)}×</span>` : ""}</div>
     </div></div>
     <div class="body">
       <div class="money"><span class="ask ${r.askingM>budgetOf(r)?"over":""}">${esc(money(r.askingM))}</span><span class="fair">fair ${esc(fairTxt(r))}</span></div>
@@ -1000,6 +1001,7 @@ function boardLine(r){
   const fresh = (it.thread || []).filter(m => m.by === "agent" && Date.parse(m.at) > (seenAt(r, me.key) || "")).length;
   let st = "";
   if(r.agentDrop && !r.agentDrop.decided) st = "🗑️ Suggests dropping";
+  else if(r.revisit && d.status === "new") st = "🔁 " + ordinal(r.revisit.n || 2) + " viewing requested";
   else if(d.status === "upcoming") st = "✅ " + fmtWhen(d.appt);
   else if(d.status === "viewed") st = "👀 Viewed";
   else if(d.status === "offer") st = "💰 Offer stage";
@@ -1218,13 +1220,61 @@ async function removeAgentFile(id, unitId){
 }
 /* "With Andrew": everything he sees for this home — the ask, the conversation, his drop
    suggestion — kept apart from "Our chat", which stays between the two of us. */
+/* ---------- Another viewing (2nd, 3rd…) ----------
+   unit.revisit = {n, at, by, note} while waiting for Andrew; unit.viewings = [{at}] every visit.
+   Andrew picks a time from our free times on his board, as for a first viewing. */
+const ordinal = n => n + (n % 10 === 1 && n % 100 !== 11 ? "st" : n % 10 === 2 && n % 100 !== 12 ? "nd" : n % 10 === 3 && n % 100 !== 13 ? "rd" : "th");
+function viewingsOf(u){
+  const v = Array.isArray(u.viewings) ? u.viewings.filter(x => x && x.at) : [];
+  if(!v.length && u.appt && ["Viewed","Offer","Booked"].includes(u.status)) return [{at:u.appt}];
+  return v;
+}
+const timesViewed = u => viewingsOf(u).filter(v => new Date(v.at) <= Date.now()).length || (["Viewed","Offer"].includes(u.status) ? 1 : 0);
+function revisitBox(r){
+  if(r.status !== "Viewed" || !agent || !agent.boardToken) return "";
+  const nNext = viewingsOf(r).length + 1;
+  if(r.revisit) return `<div class="revisit"><b>🔁 ${esc(ordinal(r.revisit.n || nNext))} viewing requested</b> <span class="muted">· ${esc(ago(r.revisit.at))}</span>${r.revisit.note ? `<div style="font-size:13px;margin-top:2px">“${esc(r.revisit.note)}”</div>` : ""}
+    <div class="muted" style="font-size:12.5px;margin-top:4px">Waiting for ${esc(AGENT())} to pick a time from your free times.</div>
+    <div class="chips" style="margin-top:6px"><button class="btn sm" type="button" id="rvFree">🗓️ Our free times</button><button class="btn sm" type="button" id="rvCancel">Cancel request</button></div></div>`;
+  if(!sheet || !sheet.rvOpen) return `<div style="margin:0 0 10px"><button class="btn sm" type="button" id="rvOpen">🔁 Ask for a ${esc(ordinal(nNext))} viewing</button></div>`;
+  const free = (board && board.free) || [];
+  return `<div class="revisit"><b>Ask ${esc(AGENT())} for a ${esc(ordinal(nNext))} viewing</b>
+    <input id="rvNote" maxlength="160" placeholder="Note (optional), e.g. measure bedroom 2" autocomplete="off" style="width:100%;box-sizing:border-box;margin-top:6px;padding:8px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:inherit">
+    <div style="font-size:12.5px;color:var(--muted);margin:8px 0 4px">${esc(AGENT())} picks a time from your free times:</div>${availabilityHTML(free, false)}
+    <div class="chips" style="margin-top:8px"><button class="btn sm primary" type="button" id="rvSend">Send on WhatsApp</button><button class="btn sm" type="button" id="rvFree">🗓️ Edit free times</button><button class="btn sm" type="button" id="rvClose">Cancel</button></div></div>`;
+}
+async function sendRevisit(r){
+  const note = (($("rvNote") || {}).value || "").trim().slice(0,160), n = viewingsOf(r).length + 1, now = new Date().toISOString();
+  const btn = $("rvSend"); if(btn){ btn.disabled = true; btn.textContent = "Sending…"; }
+  try {
+    const token = await ensureBoard(), d = {status:"new", closedReason:"", appt:""};
+    const cn = `Please arrange a ${ordinal(n)} viewing${note ? " — " + note : ""}`;
+    const flat = onBoard(r.id) ? {[`items.${r.id}.status`]:"new", [`items.${r.id}.appt`]:"", [`items.${r.id}.revisit`]:{n, at:now, note}, [`items.${r.id}.changedAt`]:now, [`items.${r.id}.changeNote`]:cn}
+      : {[`items.${r.id}`]:{name:r.name||"", area:(r.area||"").split("·")[0].trim(), url:r.url||"", addedAt:now, status:d.status, appt:"", closedReason:"", ourOffer:null, changedAt:now, changeNote:cn, priority:priorityOf(r), ask:askOf(r), spec:specOf(r), revisit:{n, at:now, note}}};
+    await unitRef(r.id).update({revisit:{n, at:now, by:me.key, note}, viewings:viewingsOf(r)}); // first, so the board sync agrees
+    await restPatch("hs_board/" + token, flat);
+    logAct(null, {kind:"comment", by:me.key, unitId:r.id, unitName:r.name||"", text:`Asked ${AGENT()} for a ${ordinal(n)} viewing${note ? ": " + note : ""}`});
+    sheet.rvOpen = false;
+    const hr = new Date().getHours(), tod = hr < 12 ? "morning" : hr < 18 ? "afternoon" : "evening";
+    const L = [`Hi ${tod} ${AGENT()},`, "", `Could we arrange a ${ordinal(n)} viewing of ${r.name}?${note ? "\n" + note : ""}`, "", "Our free times are on your board:", boardLink(), "", "Thanks!"];
+    waOpen(L.join("\n"));
+  } catch(e){ toast("Couldn't send — check your connection and try again"); if(btn){ btn.disabled = false; btn.textContent = "Send on WhatsApp"; } }
+}
+async function cancelRevisit(r){
+  const now = new Date().toISOString();
+  try {
+    if(onBoard(r.id)) await restPatch("hs_board/" + agent.boardToken, {[`items.${r.id}.revisit`]:null, [`items.${r.id}.status`]:"viewed", [`items.${r.id}.appt`]:r.appt||"", [`items.${r.id}.changedAt`]:now, [`items.${r.id}.changeNote`]:"No need for another viewing after all"});
+    await unitRef(r.id).update({revisit:null}); toast("Request cancelled");
+  } catch(e){ toast("Couldn't cancel — check your connection"); }
+}
 function andrewBox(r){
   if(!agent || !agent.boardToken) return "";
-  if(!onBoard(r.id)) return r.status === "Rejected" || gone(r) ? "" : `<div style="margin:0 0 10px"><button class="btn sm" type="button" data-toboard="${esc(r.id)}">＋ Add to ${esc(AGENT())}'s board</button></div>${agentFiles(r).length ? `<div class="box"><h4>Files from ${esc(AGENT())}</h4>${agentFilesHTML(r)}</div>` : ""}`;
+  if(!onBoard(r.id)) return r.status === "Rejected" || gone(r) ? "" : revisitBox(r) + `<div style="margin:0 0 10px"><button class="btn sm" type="button" data-toboard="${esc(r.id)}">＋ Add to ${esc(AGENT())}'s board</button></div>${agentFiles(r).length ? `<div class="box"><h4>Files from ${esc(AGENT())}</h4>${agentFilesHTML(r)}</div>` : ""}`;
   const ed = sheet && sheet.askEdit, ask = askOf(r);
   const drop = r.agentDrop && !r.agentDrop.decided && r.status !== "Rejected" ? `<div class="adrop"><b>🗑️ ${esc(AGENT())} suggests dropping this one</b><div style="font-size:13px;margin-top:4px">${esc(r.agentDrop.reason || "")}${r.agentDrop.note ? " — " + esc(r.agentDrop.note) : ""}</div><div class="chips" style="margin-top:8px"><button class="btn sm primary" type="button" data-dropyes="${esc(r.id)}">Drop it</button><button class="btn sm" type="button" data-dropkeep="${esc(r.id)}">Keep it</button></div></div>` : "";
   return `<div class="box withA" id="withA"><h4>With ${esc(AGENT())} <span class="muted" style="font-weight:600;text-transform:none;letter-spacing:0">· he sees all of this</span></h4>
     ${drop}
+    ${revisitBox(r)}
     ${ed ? `<div class="aask"><b>Please check for us</b><textarea id="askIn" maxlength="300" rows="2" style="width:100%;box-sizing:border-box;font:inherit;padding:8px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);margin-top:6px">${esc(ask)}</textarea>
       <div class="chips" style="margin-top:6px"><button class="btn sm primary" type="button" id="askSave">Save</button><button class="btn sm" type="button" id="askCancel">Cancel</button>${typeof r.agentAsk === "string" ? `<button class="btn sm" type="button" id="askReset">Use Claude's suggestion</button>` : ""}</div></div>`
       : `<div class="aask"><span class="grow"><b>Please check for us:</b> ${ask ? esc(ask) : `<span class="muted">nothing right now</span>`}${typeof r.agentAsk === "string" || !ask ? "" : ` <span class="muted" style="font-size:12px">(Claude's suggestion)</span>`}</span><button class="linkbtn" type="button" id="askEdit" aria-label="Edit">✏️ Edit</button></div>`}
@@ -1307,7 +1357,7 @@ function renderSheet(fresh){
       <div class="hearts" style="margin-top:12px">${KEYS.map(k => heartsRow(r,k)).join("")}${claudeRow(r)}</div></div>
     ${moneyBox(r)}
     ${andrewBox(r)}
-    <div class="box"><h4>Viewing</h4>
+    <div class="box"><h4>Viewing</h4>${viewingsOf(r).length >= 2 || (viewingsOf(r).length && r.revisit) ? `<div style="font-size:13px;margin:-2px 0 8px">${viewingsOf(r).map((v,i) => `${esc(ordinal(i+1))} ${esc(fmtWhen(v.at))}${new Date(v.at) > Date.now() ? " (booked)" : ""}`).join(" · ")}</div>` : ""}
       <div class="form"><label class="w">Status<select id="stSel">${STATUSES.map(s => `<option value="${s}" ${s===st?"selected":""}>${esc(STATUS_LABEL[s])}</option>`).join("")}</select></label>
       <label class="w">Date & time<input id="apptIn" type="datetime-local" value="${esc(r.appt||"")}" ${st==="Booked"?"":"disabled"} title="${st==="Booked"?"":"Set status to Viewing booked to pick a time"}"></label>
       <label class="w">Agent (name & phone)<input id="agentIn" value="${esc(r.agent||"")}" placeholder="e.g. Matthew Tan 8132 8152"></label></div></div>
@@ -1367,6 +1417,11 @@ function renderSheet(fresh){
   $("addConcern").onclick = () => addTag("concerns");
   $("sheetBody").querySelectorAll("[data-fold]").forEach(d => d.ontoggle = () => { sheet[d.dataset.fold] = d.open; });
   if($("askEdit")) $("askEdit").onclick = () => { sheet.askEdit = true; keepScroll(renderSheet); };
+  if($("rvOpen")) $("rvOpen").onclick = () => { sheet.rvOpen = true; keepScroll(renderSheet); };
+  if($("rvClose")) $("rvClose").onclick = () => { sheet.rvOpen = false; keepScroll(renderSheet); };
+  if($("rvSend")) $("rvSend").onclick = () => sendRevisit(r);
+  if($("rvCancel")) $("rvCancel").onclick = () => cancelRevisit(r);
+  if($("rvFree")) $("rvFree").onclick = () => openAsk();
   if($("askCancel")) $("askCancel").onclick = () => { sheet.askEdit = false; keepScroll(renderSheet); };
   if($("askSave")) $("askSave").onclick = () => { sheet.askEdit = false; save(r.id, {agentAsk: $("askIn").value.trim()}, "Saved — " + AGENT() + "'s board updates shortly"); };
   if($("askReset")) $("askReset").onclick = () => { sheet.askEdit = false; save(r.id, {agentAsk: FV.delete()}, "Back to Claude's suggestion"); };
@@ -1512,6 +1567,7 @@ function deriveItem(u){
   if(u.nopeRejected || u.status === "Rejected") return {status:"closed", closedReason: u.rejectReason ? "Not for us — " + u.rejectReason : "No longer interested", appt:""};
   if(/sold|withdrawn/i.test(u.listingState || "")) return {status:"closed", closedReason:"Sold / withdrawn", appt:""};
   if(u.status === "Offer") return {status:"offer", closedReason:"", appt:u.appt||""};
+  if(u.status === "Viewed" && u.revisit) return {status:"new", closedReason:"", appt:""}; // another viewing asked for
   if(u.status === "Viewed") return {status:"viewed", closedReason:"", appt:u.appt||""};
   if(u.status === "Booked" && u.appt) return {status:"upcoming", closedReason:"", appt:u.appt};
   return {status:"new", closedReason:"", appt:""};
@@ -1610,9 +1666,12 @@ async function applyBoardReplies(){
       const ud = await restCall("GET", `${FS_DOCS()}/hs_units/${id}`); if(!ud) continue;
       const u = fsDec({mapValue:{fields:ud.fields || {}}}), x = R[id] || {}, p = P[id] || {}, upd = {}, lines = [], tf = [];
       if(x.state === "confirmed" && x.appt && (x.appt !== p.appt || p.state !== "confirmed")){
-        if(u.status !== "Viewed" && u.status !== "Offer") upd.status = "Booked";
+        if(u.revisit && u.status === "Viewed"){ // another viewing: book it, keep the history
+          upd.status = "Booked"; upd.revisit = null;
+          upd.viewings = viewingsOf(u).filter(v => v.at !== x.appt).concat([{at:x.appt}]);
+        } else if(u.status !== "Viewed" && u.status !== "Offer") upd.status = "Booked";
         upd.appt = x.appt; upd.agent = AGENT() + (agent.phone ? " " + String(agent.phone).replace(/^65/, "") : "");
-        lines.push("Viewing confirmed for " + fmtWhen(x.appt) + ".");
+        lines.push((u.revisit ? ordinal(viewingsOf(u).length + 1) + " viewing" : "Viewing") + " confirmed for " + fmtWhen(x.appt) + ".");
       }
       if(x.state === "sold" && p.state !== "sold"){ upd.listingState = "Sold (per agent)"; upd.updatedAt = now; upd.updateNote = AGENT() + " says this unit is sold or withdrawn"; lines.push("This unit is sold or withdrawn."); }
       else if(p.state === "sold" && x.state !== "sold" && u.listingState === "Sold (per agent)"){ upd.listingState = "Live"; upd.updatedAt = now; upd.updateNote = AGENT() + " took back 'sold' — still available"; lines.push("Still available (I'd marked it sold by mistake)."); }
